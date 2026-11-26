@@ -327,7 +327,7 @@ export interface Activity {
   left: { videos: number; eta_seconds: number | null };
   month: { seconds: number; ai_cost: number; ai_limit: number; per_film_seconds: number | null; per_film_cost: number | null };
   rows: ActivityRow[];
-  counts: Record<string, number>; // all, running, waiting, failed, done
+  counts: Record<string, number>; // all, running, waiting (queued), notstarted, failed, done
 }
 
 export interface Status {

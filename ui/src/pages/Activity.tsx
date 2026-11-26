@@ -11,8 +11,8 @@ import { useToast } from '../lib/toast';
 import { errText } from './settings/util';
 import './Activity.css';
 
-type Filter = 'all' | 'running' | 'waiting' | 'failed' | 'done';
-const FILTERS: [Filter, string][] = [['all', 'All'], ['running', 'Running'], ['waiting', 'Waiting'], ['failed', 'Needs a look'], ['done', 'Done']];
+type Filter = 'all' | 'running' | 'waiting' | 'notstarted' | 'failed' | 'done';
+const FILTERS: [Filter, string][] = [['all', 'All'], ['running', 'Running'], ['waiting', 'In the queue'], ['notstarted', 'Not started'], ['failed', 'Needs a look'], ['done', 'Done']];
 
 /** The one button a row offers, from its step states. */
 function action(r: ActivityRow): { label: string; steps?: Step[] } | null {
