@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from functools import cache
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
@@ -16,37 +15,27 @@ if TYPE_CHECKING:
 API = "/api/v1"
 SPOILER_TAGS = {"death", "sacrifice", "betrayal", "revelation"}
 FAMILY_NAMES = {"place": "Place", "action": "Action", "beat": "Beat", "mood": "Mood",
-                "occasion": "Occasion", "weather": "Weather", "people": "People",
+                "occasion": "Occasion", "weather": "Weather", "time": "Time of day",
+                "people": "People",
                 "creature": "Creature", "content": "Content", "element": "Element"}
 SUBJECTIVE = {"mood", "beat"}
 
 
-@cache
-def _tag_index() -> dict[str, dict[str, Any]]:
-    return {t["id"]: t for t in vocab.load()["tags"]}
-
-
+# Names, families and ids all come from stages/vocab.py: the bundled list first,
+# then the person's own tags ("My tags").
 def tag_name(tag: str) -> str:
     return vocab.name(tag)
 
 
 def tag_family(tag: str) -> str | None:
-    t = _tag_index().get(tag)
-    return t["family"] if t else None
+    return vocab.family(tag)
 
 
 def tag_id(name_or_id: str) -> str:
     """ "Christmas" or "christmas" -> "christmas" (names from the tag list map to ids)."""
-    raw = str(name_or_id or "").strip()
-    low = raw.lower()
-    if low in _tag_index():
-        return low
-    for t in _tag_index().values():
-        if t["name"].lower() == low:
-            return t["id"]
     from .store import slug
 
-    return slug(raw)
+    return vocab.find(name_or_id) or slug(str(name_or_id or "").strip())
 
 
 def source_kind(source: str) -> str:

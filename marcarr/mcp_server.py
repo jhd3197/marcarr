@@ -94,20 +94,34 @@ def list_titles(q: str = "") -> str:
     return "\n".join(rows) or "nothing found"
 
 
-def find_scenes(tags: str = "", person: str = "", q: str = "", include_proposed: bool = False) -> str:
-    """Find scenes across the library by tags (all must match), a person, or words said.
+def find_scenes(tags: str = "", person: str = "", q: str = "", include_proposed: bool = False,
+                signals: str = "") -> str:
+    """Find scenes across the library by tags (all must match), a person, words said, or measured signals.
 
     Args:
         tags: comma-separated tag names, like "Christmas,Snow".
         person: a person id, like "ron-weasley".
         q: words in the dialogue.
         include_proposed: also count tags nobody has reviewed yet.
+        signals: comma-separated measured signals, like "dark,fast-cutting"; each must cover half the scene.
     """
     data = _call("GET", "/search/scenes", params={
-        "tags": tags, "person": person or None, "q": q, "status": "proposed" if include_proposed else "accepted"})
+        "tags": tags, "person": person or None, "q": q, "signals": signals,
+        "status": "proposed" if include_proposed else "accepted"})
     rows = [f"video {h['video']} " + _scene_line(h, h["title_name"]) + (f' "{h["line"]}"' if h.get("line") else "")
             for h in data["items"]]
     return _cut("\n".join(rows) or "no scene matches")
+
+
+def list_collections() -> str:
+    """The saved searches (a name for a combination of tags, a person, words and signals) with
+    how many kept scenes match each now. Run one with find_scenes."""
+    rows = []
+    for c in _call("GET", "/collections")["items"]:
+        parts = [f"tags {','.join(c['tags'])}" if c["tags"] else "", f"person {c['person']}" if c["person"] else "",
+                 f'q "{c["q"]}"' if c["q"] else "", f"signals {','.join(c['signals'])}" if c["signals"] else ""]
+        rows.append(f"{c['name']}: {'; '.join(p for p in parts if p)} ({c['scenes']} scenes)")
+    return _cut("\n".join(rows) or "no saved searches")
 
 
 def whats_at(video: str, seconds: float) -> str:
@@ -163,13 +177,18 @@ def look(video: str, seconds: float) -> list[Any]:
 
 
 def list_tags(family: str = "") -> str:
-    """The tag list Marcarr uses (tags are named from it).
+    """The tag list Marcarr uses (tags are named from it), with the person's own tags first.
 
     Args:
-        family: only one family (Place, Action, Beat, Mood, Occasion, Weather, People, Creature, Content, Element).
+        family: only one family (Place, Action, Beat, Mood, Occasion, Weather, Time of day, People, Creature, Content, Element).
     """
     d = _call("GET", "/tags", params={"family": family or None})
-    return "\n".join(f"[{f['name']}] " + ", ".join(t["name"] for t in f["tags"]) for f in d["families"])
+    rows = [f"[{f['name']}] " + ", ".join(t["name"] for t in f["tags"]) for f in d["families"]]
+    mine = [t["name"] + (f" (only {t['scope']['name']})" if t.get("scope") else "")
+            for t in d.get("mine") or [] if not t.get("retired")]
+    if mine:
+        rows.insert(0, "[My tags] " + ", ".join(mine))
+    return "\n".join(rows)
 
 
 def propose_tag(video: str, tag: str, start: float, end: float, seen: str = "", heard: str = "",
@@ -192,7 +211,7 @@ def propose_tag(video: str, tag: str, start: float, end: float, seen: str = "", 
     return f"proposed {t['id']} {t['name']} {_clock(t['start'])}-{_clock(t['end'])}: waiting for review"
 
 
-TOOLS = [list_titles, find_scenes, whats_at, get_scene, read_dialogue, look, list_tags, propose_tag]
+TOOLS = [list_titles, find_scenes, list_collections, whats_at, get_scene, read_dialogue, look, list_tags, propose_tag]
 
 
 def tool_definitions() -> list[Any]:

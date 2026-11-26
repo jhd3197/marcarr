@@ -224,4 +224,40 @@ def _v1() -> str:
     """
 
 
-MIGRATIONS: list[Callable[[], str]] = [_v1]
+def _v2() -> str:
+    # A collection is a saved scene search, not a list of scenes: what it shows is
+    # worked out when it is opened, so new matching scenes appear by themselves.
+    return """
+        CREATE TABLE collections (
+            id         TEXT PRIMARY KEY,       -- col_<hex>
+            name       TEXT NOT NULL,
+            tags       TEXT NOT NULL DEFAULT '[]',   -- vocab ids, a scene must have all
+            person     TEXT,                   -- person id, must be on screen
+            q          TEXT NOT NULL DEFAULT '',     -- words in the dialogue
+            signals    TEXT NOT NULL DEFAULT '[]',   -- measured signal ids, each over half the scene
+            created_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX collections_name ON collections (name COLLATE NOCASE);
+    """
+
+
+def _v3() -> str:
+    # Custom tags ("My tags"): the person's own additions to the bundled tag list.
+    # title_id NULL: the whole library; else one movie, or one show and its episodes.
+    return """
+        CREATE TABLE custom_tags (
+            id         TEXT PRIMARY KEY,       -- slug, never a bundled id, never fc:
+            name       TEXT NOT NULL,
+            family     TEXT,                   -- a bundled family, or NULL (none)
+            hint       TEXT NOT NULL DEFAULT '',
+            see        TEXT NOT NULL DEFAULT '[]',   -- things to look for
+            hear       TEXT NOT NULL DEFAULT '[]',   -- words to listen for
+            title_id   TEXT,                   -- scope: NULL, a movie or a show
+            retired    INTEGER NOT NULL DEFAULT 0,   -- kept on its scenes, not proposed again
+            created_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX custom_tags_name ON custom_tags (name COLLATE NOCASE);
+    """
+
+
+MIGRATIONS: list[Callable[[], str]] = [_v1, _v2, _v3]

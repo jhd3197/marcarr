@@ -19,7 +19,7 @@ export interface StepInfo {
 
 export type TagStatus = 'proposed' | 'accepted' | 'rejected';
 export type Family =
-  | 'place' | 'action' | 'beat' | 'mood' | 'occasion' | 'weather' | 'people' | 'creature' | 'content' | 'element';
+  | 'place' | 'action' | 'beat' | 'mood' | 'occasion' | 'weather' | 'time' | 'people' | 'creature' | 'content' | 'element';
 
 /** What a title or video is doing, for the dot + one line under a poster. */
 export interface StateLine {
@@ -209,7 +209,31 @@ export interface VocabTag {
   subjective: boolean;
   label: boolean; // written to Plex as a label
   off: boolean; // its family is off in Settings
+  // scenes, counted as scene search shows them: accepted = kept, proposed = waiting for
+  // review (a scene where the tag is already kept is not also waiting). rejected = dropped ranges.
   counts: { accepted: number; proposed: number; rejected: number };
+}
+
+/** One of the person's own tags ("My tags"): shaped like a tag of the list. The AI may
+ *  propose it, never keeps it by itself. */
+export interface CustomTag extends Omit<VocabTag, 'family'> {
+  family: Family | null; // null: no family (always proposed, shown under "custom" to the AI)
+  custom: true;
+  // null: the whole library. Else one movie, or one show and its episodes.
+  scope: { title: string; name: string; type: 'movie' | 'show' | null; year: number | null } | null;
+  retired: boolean; // removed while scenes still had it: they keep it, it is not proposed again
+  created_at: string;
+}
+
+/** Body of a custom tag create or edit. see and hear: a list, or words separated by commas. */
+export interface CustomTagBody {
+  name?: string;
+  family?: Family | null;
+  hint?: string;
+  see?: string[] | string;
+  hear?: string[] | string;
+  scope?: string | null; // a show's or movie's title id, null for the whole library
+  retired?: boolean; // edit only: false brings a retired tag back
 }
 
 export interface VocabFamily {
@@ -221,9 +245,12 @@ export interface VocabFamily {
 }
 
 export interface Vocab {
+  mine: CustomTag[]; // the person's own tags, oldest first, retired ones too
   families: VocabFamily[];
   own: { id: string; name: string; hint: string }[]; // Marcarr's own: titles, theme, recap
   signals: { id: string; name: string; hint: string }[];
+  // why the list may be empty: is AI on, does it have a model, how many videos finished the tags step
+  tagging: { enabled: boolean; model: boolean; videos_done: number };
 }
 
 export interface ReviewItem extends Tag {
@@ -257,6 +284,18 @@ export interface SceneHit {
   still: string;
   spoiler: boolean;
   line: string | null; // the matching dialogue line, for word searches
+}
+
+/** A saved scene search. It keeps the query, not the scenes, so new matches show up by themselves. */
+export interface Collection {
+  id: string; // "col_1a2b3c4d5e"
+  name: string;
+  tags: string[]; // vocab tag ids, a scene must have all
+  person: string | null;
+  q: string; // words in the dialogue
+  signals: string[]; // measured signal ids, each over at least half the scene
+  created_at: string;
+  scenes: number; // kept scenes that match now
 }
 
 export interface Place {

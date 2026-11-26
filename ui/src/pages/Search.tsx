@@ -1,9 +1,11 @@
 // Scene search: tags, a person and words in the dialogue. Built from docs/design/search.
-// The search lives in the URL: ?tags=christmas,snow&person=ron-weasley&q=cloak&proposed=0
+// The search lives in the URL: ?tags=christmas,snow&person=ron-weasley&q=cloak&signals=dark&proposed=0
+// proposed=0 is kept tags only, proposed=only is tags waiting for review only (the Tags page links to both).
+// A search can be saved under a name (a collection): the saved ones sit at the top with their kept scenes.
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { api } from '../api/client';
-import type { Person, SceneHit, VocabTag } from '../api/types';
+import { api, collectionHref } from '../api/client';
+import type { Collection, CustomTag, Person, SceneHit, VocabTag } from '../api/types';
 import { css, Empty, ErrorBox, Loading, Switch } from '../components/kit';
 import { hms } from '../lib/format';
 import { useApi } from '../lib/hooks';
@@ -22,7 +24,10 @@ export default function Search() {
   const tags = useMemo(() => (params.get('tags') || '').split(',').filter(Boolean), [params]);
   const person = params.get('person') || '';
   const q = params.get('q') || '';
+  const signals = useMemo(() => (params.get('signals') || '').split(',').filter(Boolean), [params]);
   const withProposed = params.get('proposed') !== '0';
+  const onlyProposed = params.get('proposed') === 'only';
+  const status = onlyProposed ? 'review' : withProposed ? 'proposed' : 'accepted';
   const toast = useToast();
 
   const [text, setText] = useState(q);
@@ -33,8 +38,12 @@ export default function Search() {
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const [naming, setNaming] = useState<string | null>(null); // the name being typed for "Save search"
+  const [saving, setSaving] = useState(false);
+
   const vocab = useApi(() => api.vocab(), []);
   const people = useApi(() => api.people(), []);
+  const saved = useApi(() => api.collections(), []);
 
   const update = (ch: Record<string, string | null>) => {
     const p = new URLSearchParams(params);
@@ -44,18 +53,20 @@ export default function Search() {
   const toggleTag = (id: string) => update({ tags: (tags.includes(id) ? tags.filter((t) => t !== id) : [...tags, id]).join(',') });
   const submit = (e: FormEvent) => { e.preventDefault(); update({ q: text.trim() }); };
 
-  const asked = tags.length > 0 || !!person || !!q;
-  const key = [tags.join(','), person, q, withProposed].join('|');
+  const toggleSignal = (id: string) => update({ signals: (signals.includes(id) ? signals.filter((s) => s !== id) : [...signals, id]).join(',') });
+
+  const asked = tags.length > 0 || !!person || !!q || signals.length > 0;
+  const key = [tags.join(','), person, q, signals.join(','), status].join('|');
   const hits = useApi(
-    () => (asked ? api.search({ tags, person: person || undefined, q: q || undefined, status: withProposed ? 'proposed' : 'accepted' }) : Promise.resolve({ total: 0, items: [] as SceneHit[] })),
+    () => (asked ? api.search({ tags, person: person || undefined, q: q || undefined, signals, status }) : Promise.resolve({ total: 0, items: [] as SceneHit[] })),
     [key],
   );
-  useEffect(() => { setMore([]); setPage(1); }, [key]);
+  useEffect(() => { setMore([]); setPage(1); setNaming(null); }, [key]);
 
   const loadMore = async () => {
     setLoadingMore(true);
     try {
-      const r = await api.search({ tags, person: person || undefined, q: q || undefined, status: withProposed ? 'proposed' : 'accepted', page: page + 1 });
+      const r = await api.search({ tags, person: person || undefined, q: q || undefined, signals, status, page: page + 1 });
       setMore((m) => [...m, ...r.items]);
       setPage(page + 1);
     } catch (e) {
@@ -65,8 +76,39 @@ export default function Search() {
     }
   };
 
+  // -- saved searches ---------------------------------------------------------------
+  const cols: Collection[] = saved.data?.items || [];
+  const same = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+  const current = cols.find((c) => same(c.tags, tags) && (c.person || '') === person && c.q === q && same(c.signals, signals));
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    const name = (naming || '').trim();
+    if (!name || saving) return;
+    setSaving(true);
+    try {
+      const c = await api.addCollection({ name, tags, person: person || null, q, signals });
+      toast(`Saved as ${c.name}`);
+      setNaming(null);
+      saved.reload();
+    } catch (err) {
+      toast(errText(err), true);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const remove = async (c: Collection) => {
+    if (!window.confirm(`Remove ${c.name}? The scenes and their tags stay.`)) return;
+    try {
+      await api.deleteCollection(c.id);
+      saved.reload();
+    } catch (err) {
+      toast(errText(err), true);
+    }
+  };
+
   // -- tag picks: the chosen ones, then the most used ------------------------------
-  const vtags: VocabTag[] = useMemo(() => (vocab.data ? vocab.data.families.flatMap((f) => f.tags) : []), [vocab.data]);
+  const mine = useMemo(() => (vocab.data?.mine || []).filter((t) => !t.retired || t.counts.accepted + t.counts.proposed > 0), [vocab.data]);
+  const vtags: (VocabTag | CustomTag)[] = useMemo(() => (vocab.data ? [...mine, ...vocab.data.families.flatMap((f) => f.tags)] : []), [vocab.data, mine]);
   const byId = useMemo(() => new Map(vtags.map((t) => [t.id, t])), [vtags]);
   const picks = useMemo(() => {
     const used = [...vtags].filter((t) => !tags.includes(t.id)).sort((a, b) => (b.counts.accepted + b.counts.proposed) - (a.counts.accepted + a.counts.proposed));
@@ -74,9 +116,9 @@ export default function Search() {
     return [...chosen, ...used.slice(0, Math.max(0, PICKS - chosen.length))];
   }, [vtags, tags, byId]);
 
-  const tagButton = (t: { id: string; name: string; family: string }) => {
+  const tagButton = (t: { id: string; name: string; family: string | null }) => {
     const on = tags.includes(t.id);
-    const fv = `var(--f-${t.family})`;
+    const fv = t.family ? `var(--f-${t.family})` : 'var(--accent)';
     return (
       <button key={t.id} type="button" className="tg" aria-pressed={on} onClick={() => toggleTag(t.id)}
         style={css('border-left:4px solid ' + fv + (on ? ';background:var(--text);color:var(--bg);border-color:var(--text);border-left-color:' + fv : ''))}>
@@ -119,6 +161,21 @@ export default function Search() {
     <div className="pg-search" style={{ display: 'contents' }}>
       <header style={css('display: flex; flex-direction: column; gap: 14px')}>
         <h1 className="h1">Search</h1>
+        {cols.length ? (
+          <div style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 6px')}>
+            <span className="lab" style={css('min-width: 52px')}>Saved</span>
+            {cols.map((c) => (
+              <span key={c.id} className={'pill' + (c === current ? ' on' : '')} style={css('padding-right: 4px; cursor: default')}>
+                <Link to={collectionHref(c)} title={`${c.scenes} kept ${c.scenes === 1 ? 'scene' : 'scenes'}`}
+                  style={css('display: inline-flex; align-items: center; gap: 6px; color: inherit; text-decoration: none')}>
+                  {c.name}<em>{c.scenes}</em>
+                </Link>
+                <button type="button" aria-label={`Remove ${c.name}`} title="Remove" onClick={() => void remove(c)}
+                  style={css('width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; opacity: .6; font-size: 14px; line-height: 1; cursor: pointer')}>×</button>
+              </span>
+            ))}
+          </div>
+        ) : null}
         <form onSubmit={submit} style={css('display: flex; flex-wrap: wrap; gap: 10px')}>
           <label style={css('position: relative; flex: 1 1 360px')}>
             <span style={css('position: absolute; left: -9999px')}>Words in the dialogue</span>
@@ -137,6 +194,12 @@ export default function Search() {
         </div>
         {allTags && vocab.data ? (
           <div style={css('display: flex; flex-direction: column; gap: 10px')}>
+            {mine.length ? (
+              <div style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 6px')}>
+                <span className="lab" style={css('width: 80px')}>My tags</span>
+                {mine.map(tagButton)}
+              </div>
+            ) : null}
             {vocab.data.families.map((f) => (
               <div key={f.family} style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 6px')}>
                 <span className="lab" style={css('width: 80px')}>{f.name}</span>
@@ -163,23 +226,44 @@ export default function Search() {
             </select>
           ) : null}
         </div>
+        {vocab.data?.signals.length ? (
+          <div style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 6px')}>
+            <span className="lab" style={css('min-width: 52px')}>Signals</span>
+            {vocab.data.signals.map((s) => {
+              const on = signals.includes(s.id);
+              return <button key={s.id} type="button" className={'pill' + (on ? ' on' : '')} aria-pressed={on} title={s.hint || undefined} onClick={() => toggleSignal(s.id)}>{s.name}</button>;
+            })}
+          </div>
+        ) : null}
       </header>
 
       <section aria-label="Results" style={css('display: flex; flex-direction: column; gap: 22px')}>
         <div style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px')}>
           <h2 className="h2" style={css('flex: 1 1 200px')}>
-            {asked ? `${total || n} ${(total || n) === 1 ? 'scene' : 'scenes'} in ${groups.length} ${groups.length === 1 ? 'title' : 'titles'}` : 'Find a scene'}
+            {asked ? `${total || n} ${(total || n) === 1 ? 'scene' : 'scenes'}${onlyProposed ? ' to review' : ''} in ${groups.length} ${groups.length === 1 ? 'title' : 'titles'}` : 'Find a scene'}
           </h2>
+          {!asked || current ? null : naming === null ? (
+            <button type="button" className="btn sm" onClick={() => setNaming('')}>Save search</button>
+          ) : (
+            <form onSubmit={save} style={css('display: flex; align-items: center; gap: 6px')}>
+              <input className="inp" autoFocus aria-label="Name for this search" placeholder="Name, like Christmas dinner" maxLength={80}
+                value={naming} onChange={(e) => setNaming(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setNaming(null); }}
+                style={css('width: 220px; height: 28px')} />
+              <button type="submit" className="btn sm pri" disabled={saving || !naming.trim()}>Save</button>
+              <button type="button" className="btn sm ghost" onClick={() => setNaming(null)}>Cancel</button>
+            </form>
+          )}
           <Switch on={withProposed} label="Include proposed tags" onChange={(v) => update({ proposed: v ? null : '0' })} />
           <span style={css('font-size: 13px')}>Include proposed tags</span>
+          {onlyProposed ? <a href="#kept" style={css('font-size: 12.5px')} onClick={(e) => { e.preventDefault(); update({ proposed: null }); }}>Show kept too</a> : null}
         </div>
 
-        {!asked ? <Empty>Pick a tag or a person, or type words from the dialogue.</Empty>
+        {!asked ? <Empty>Pick a tag, a person or a signal, or type words from the dialogue.</Empty>
           : hits.loading && !hits.data ? <Loading />
           : hits.error ? <ErrorBox error={hits.error} retry={hits.reload} />
           : n === 0 ? (
             <div style={css('padding: 28px 20px; border: 1px dashed var(--border); border-radius: 12px; font-size: 14px; color: var(--dim)')}>
-              No scene has all of these. Take one tag off{withProposed ? '' : ', or include proposed tags'}.
+              {onlyProposed ? 'Nothing here is waiting for review.' : `No scene has all of these. Take one off${withProposed ? '' : ', or include proposed tags'}.`}
             </div>
           ) : groups.map((g) => (
             <div key={g.title}>

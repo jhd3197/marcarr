@@ -29,8 +29,8 @@ ENV_FIELDS = {
 }
 
 STEPS = ("shots", "subtitles", "scenes", "signals", "cast", "faces", "tags")
-FAMILIES = ("occasion", "weather", "place", "action", "beat", "people", "mood", "creature",
-            "element", "content")
+FAMILIES = ("occasion", "weather", "time", "place", "action", "beat", "people", "mood",
+            "creature", "element", "content")
 
 
 def Secret(default: str = "") -> Any:  # noqa: N802 - reads like a type in the models

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { api, urls } from '../api/client';
-import type { Face, Person, SceneDetail, Tag, VocabFamily } from '../api/types';
+import type { Face, Person, SceneDetail, Tag } from '../api/types';
 import { css, ErrorBox, Loading } from '../components/kit';
 import { useApp } from '../components/Shell';
 import { hms, ms } from '../lib/format';
@@ -61,7 +61,7 @@ function SceneView({ s, set, nav, toast, refreshStatus }: {
   const [busy, setBusy] = useState(false);
   const [play, setPlay] = useState<number | null>(null); // seconds into the clip, null = not playing
   const [adding, setAdding] = useState(false);
-  const [vocab, setVocab] = useState<VocabFamily[] | null>(null);
+  const [vocab, setVocab] = useState<{ family: string; name: string; tags: { id: string; name: string }[] }[] | null>(null);
   const [pick, setPick] = useState('');
   const [faceState, setFaceState] = useState<Record<string, 'yes' | 'no'>>({});
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -100,7 +100,7 @@ function SceneView({ s, set, nav, toast, refreshStatus }: {
 
   const openAdd = () => {
     setAdding(true);
-    if (!vocab) api.vocab().then((v) => setVocab(v.families), (e) => toast(`Could not load the tags: ${errText(e)}`, true));
+    if (!vocab) api.vocab().then((v) => setVocab([...(v.mine.some((t) => !t.retired) ? [{ family: 'mine', name: 'My tags', tags: v.mine.filter((t) => !t.retired) }] : []), ...v.families]), (e) => toast(`Could not load the tags: ${errText(e)}`, true));
   };
   const addTag = async () => {
     if (!pick) return;

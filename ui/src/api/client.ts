@@ -1,6 +1,6 @@
 // One function per Marcarr API call. Pages import from here, never fetch directly.
 import type {
-  Activity, ApiKey, AtTime, Face, Line, Paged, Person, Place, PlexLibrary, ReviewItem, ReviewQueue,
+  Activity, ApiKey, AtTime, Collection, CustomTag, CustomTagBody, Face, Line, Paged, Person, Place, PlexLibrary, ReviewItem, ReviewQueue,
   Scene, SceneDetail, SceneHit, Settings, Signal, Status, Step, Tag, Title, TitleSummary, Video,
   Vocab, Webhook, WebhookCall,
 } from './types';
@@ -112,14 +112,25 @@ export const api = {
   deleteTag: (id: string) => del<void>(`/tags/${id}`),
   bulk: (ids: string[], action: 'keep' | 'drop' | 'undo') => post<{ changed: number }>('/tags/bulk', { ids, action }),
   setTagLabel: (tag: string, label: boolean) => post<{ tag: string; label: boolean }>(`/tags/${enc(tag)}/label`, { label }),
+  // custom tags ("My tags"). Removing one that is on any scene retires it instead.
+  addCustomTag: (body: CustomTagBody & { name: string; id?: string }) => post<CustomTag>('/tags/mine', body),
+  editCustomTag: (id: string, body: CustomTagBody) => patch<CustomTag>(`/tags/mine/${enc(id)}`, body),
+  deleteCustomTag: (id: string) => del<{ deleted: boolean; retired: boolean; tag: CustomTag | null }>(`/tags/mine/${enc(id)}`),
 
   // -- review and search -------------------------------------------------------------
   review: (q: { family?: string; source?: string; title?: string; page?: number; per_page?: number } = {}) =>
     get<ReviewQueue>('/review', q),
   reviewItems: (q: { family?: string; source?: string; title?: string; after?: string; limit?: number } = {}) =>
     get<Paged<ReviewItem>>('/review/items', q),
-  search: (q: { tags?: string[]; person?: string; q?: string; status?: string; title?: string; page?: number } = {}) =>
+  // status: accepted (kept), proposed (kept and waiting for review), review (waiting only)
+  // signals: measured signal ids; each must cover at least half of a scene
+  search: (q: { tags?: string[]; person?: string; q?: string; signals?: string[]; status?: 'accepted' | 'proposed' | 'review'; title?: string; page?: number } = {}) =>
     get<Paged<SceneHit>>('/search/scenes', q),
+  // collections: saved searches, each with how many kept scenes match now
+  collections: () => get<Paged<Collection>>('/collections'),
+  addCollection: (body: { name: string; tags?: string[]; person?: string | null; q?: string; signals?: string[] }) => post<Collection>('/collections', body),
+  renameCollection: (id: string, name: string) => patch<Collection>(`/collections/${id}`, { name }),
+  deleteCollection: (id: string) => del<void>(`/collections/${id}`),
 
   // -- people, faces, places ---------------------------------------------------------
   people: (q: { title?: string; q?: string } = {}) => get<Paged<Person>>('/people', q),
@@ -158,6 +169,11 @@ export const api = {
   resendCall: (id: string) => post<WebhookCall>(`/webhooks/calls/${id}/resend`),
   events: () => get<{ name: string; what: string; example: unknown }[]>('/events'),
 };
+
+/** The search page showing a collection's kept scenes (the scenes its count counts). */
+export function collectionHref(c: Pick<Collection, 'tags' | 'person' | 'q' | 'signals'>): string {
+  return '/search' + qs({ tags: c.tags, person: c.person, q: c.q, signals: c.signals, proposed: '0' });
+}
 
 /** For a call not listed above yet: add it to `api` when the endpoint is settled. */
 export const raw = { get, post, put, patch, del };

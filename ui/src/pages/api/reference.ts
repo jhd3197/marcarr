@@ -257,6 +257,11 @@ export const ENDPOINTS: Endpoint[] = [
         "name": "title",
         "type": "id",
         "what": "Only one title"
+      },
+      {
+        "name": "signals",
+        "type": "list",
+        "what": "Measured signals like dark or fast-cutting, each over at least half the scene"
       }
     ],
     "example": "/search/scenes?tags=Christmas&status=accepted",
@@ -264,10 +269,21 @@ export const ENDPOINTS: Endpoint[] = [
     "response": "{\n  \"total\": 8,\n  \"items\": [\n    {\n      \"title\": \"movie:tmdb:671\",\n      \"video\": \"7c9e21ab\",\n      \"scene\": 101,\n      \"start\": 5390.0,\n      \"end\": 5587.0,\n      \"tags\": [\n        \"Christmas\",\n        \"Magic\",\n        \"Friendship\"\n      ],\n      \"still\": \"/api/v1/videos/7c9e21ab/scenes/101/still.jpg\"\n    }\n  ]\n}"
   },
   {
+    "group": "Search",
+    "method": "GET",
+    "path": "/collections",
+    "title": "Saved searches and how many kept scenes match each",
+    "scope": "read",
+    "params": [],
+    "example": "/collections",
+    "body": null,
+    "response": "{\n  \"total\": 1,\n  \"items\": [\n    {\n      \"id\": \"col_1a2b3c4d5e\",\n      \"name\": \"Christmas dinner\",\n      \"tags\": [\n        \"christmas\",\n        \"meal\"\n      ],\n      \"person\": null,\n      \"q\": \"\",\n      \"signals\": [],\n      \"created_at\": \"2026-11-26T18:04:11\",\n      \"scenes\": 12\n    }\n  ]\n}"
+  },
+  {
     "group": "Tags",
     "method": "GET",
     "path": "/tags",
-    "title": "The tag list",
+    "title": "The tag list, with your own tags in mine",
     "scope": "read",
     "params": [
       {
@@ -278,7 +294,7 @@ export const ENDPOINTS: Endpoint[] = [
     ],
     "example": "/tags?family=Occasion",
     "body": null,
-    "response": "{\n  \"families\": [\n    {\n      \"family\": \"Occasion\",\n      \"tags\": [\n        {\n          \"tag\": \"Christmas\",\n          \"hint\": \"A scene set at Christmas\",\n          \"see\": [\n            \"Christmas tree\",\n            \"presents\"\n          ],\n          \"hear\": [\n            \"Christmas\"\n          ]\n        }\n      ]\n    }\n  ]\n}"
+    "response": "{\n  \"mine\": [\n    {\n      \"id\": \"running-gag\",\n      \"name\": \"Running gag\",\n      \"family\": null,\n      \"hint\": \"The stapler goes missing again\",\n      \"see\": [\n        \"stapler\"\n      ],\n      \"hear\": [\n        \"where's my stapler\"\n      ],\n      \"counts\": {\n        \"accepted\": 3,\n        \"proposed\": 1,\n        \"rejected\": 0\n      },\n      \"label\": false,\n      \"custom\": true,\n      \"scope\": {\n        \"title\": \"show:tvdb:73244\",\n        \"name\": \"The Office\",\n        \"type\": \"show\",\n        \"year\": 2005\n      },\n      \"retired\": false,\n      \"created_at\": \"2026-11-26T18:04:11\"\n    }\n  ],\n  \"families\": [\n    {\n      \"family\": \"Occasion\",\n      \"tags\": [\n        {\n          \"tag\": \"Christmas\",\n          \"hint\": \"A scene set at Christmas\",\n          \"see\": [\n            \"Christmas tree\",\n            \"presents\"\n          ],\n          \"hear\": [\n            \"Christmas\"\n          ]\n        }\n      ]\n    }\n  ]\n}"
   },
   {
     "group": "Tags",
@@ -447,7 +463,8 @@ export const USERS: Record<Scope, string[]> = {
 };
 
 export const TOOLS: { name: string; what: string; path: string; scope: Scope }[] = [
-  { name: 'find_scenes', what: 'Find scenes by tag, person or words', path: 'GET /search/scenes', scope: 'read' },
+  { name: 'find_scenes', what: 'Find scenes by tag, person, words or signal', path: 'GET /search/scenes', scope: 'read' },
+  { name: 'list_collections', what: 'The saved searches', path: 'GET /collections', scope: 'read' },
   { name: 'whats_at', what: 'What is on screen at a time', path: 'GET /videos/{video}/at/{seconds}', scope: 'read' },
   { name: 'get_scene', what: 'One scene with its tags and people', path: 'GET /videos/{video}/scenes', scope: 'read' },
   { name: 'list_tags', what: 'The tag list', path: 'GET /tags', scope: 'read' },

@@ -13,10 +13,14 @@ from typing import Any
 
 from .db import Database, dumps
 from .errors import MarcarrError, NotFoundError
+from .stages import vocab
 
 STEPS = ("shots", "subtitles", "scenes", "signals", "cast", "faces", "tags")
 STATUSES = ("proposed", "accepted", "rejected")
 MAX_SUMMARY = 500
+MAX_CUES = 12  # per kind, on a custom tag
+MAX_CUE = 60
+MAX_HINT = 300
 
 
 def now() -> str:
@@ -45,9 +49,21 @@ def clean_range(start: Any, end: Any, duration: float | None = None) -> tuple[fl
     return round(a, 3), round(b, 3)
 
 
+def clean_cues(raw: Any) -> list[str]:
+    """ "a, b" or ["a", "b"] -> the cue words, trimmed, once each."""
+    if raw is None:
+        return []
+    if not isinstance(raw, (str, list, tuple)):
+        raise MarcarrError("cues are a list of words, or words separated by commas")
+    parts = raw.split(",") if isinstance(raw, str) else list(raw)
+    words = [" ".join(str(x).split())[:MAX_CUE] for x in parts]
+    return list(dict.fromkeys(w for w in words if w))[:MAX_CUES]
+
+
 class Store:
     def __init__(self, db: Database):
         self.db = db
+        self._custom: list[dict[str, Any]] | None = None  # custom tags, read once per change
 
     # -- key/value ---------------------------------------------------------------------
     def kv(self, key: str, default: Any = None) -> Any:
@@ -385,10 +401,24 @@ class Store:
             "SELECT video_id, COUNT(*) AS n FROM tags WHERE status = 'proposed' GROUP BY video_id")}
 
     def tag_counts(self) -> dict[str, dict[str, int]]:
+        """Tagged time ranges per tag and status, in the videos the library shows.
+        One range can cover several scenes: the tag list counts scenes instead
+        (routes/review.py) and takes only the dropped ranges from here."""
         out: dict[str, dict[str, int]] = {}
-        for r in self.db.query("SELECT tag, status, COUNT(*) AS n FROM tags GROUP BY tag, status"):
+        for r in self.db.query(
+                "SELECT g.tag, g.status, COUNT(*) AS n FROM tags g JOIN videos v ON v.id = g.video_id"
+                " JOIN titles t ON t.id = v.title_id WHERE v.current = 1 AND t.gone = 0"
+                " GROUP BY g.tag, g.status"):
             out.setdefault(r["tag"], {"accepted": 0, "proposed": 0, "rejected": 0})[r["status"]] = r["n"]
         return out
+
+    def steps_done(self, step: str) -> int:
+        """How many of the library's videos have finished a step."""
+        r = self.db.one(
+            "SELECT COUNT(*) AS n FROM steps s JOIN videos v ON v.id = s.video_id"
+            " JOIN titles t ON t.id = v.title_id"
+            " WHERE s.step = ? AND s.state = 'done' AND v.current = 1 AND t.gone = 0", (step,))
+        return int(r["n"]) if r else 0
 
     # -- faces -------------------------------------------------------------------------
     @staticmethod
@@ -500,6 +530,172 @@ class Store:
     def delete_place(self, pid: str) -> None:
         self.place(pid)
         self.db.execute("DELETE FROM places WHERE id = ? OR id LIKE ?", (pid, pid + "/%"))
+
+    # -- custom tags ("My tags") -------------------------------------------------------
+    def custom_tags(self) -> list[dict[str, Any]]:
+        """Every custom tag, retired ones too, oldest first, shaped like a tag of the
+        bundled list (id, name, family, hint, cues) plus ``custom``, ``title_id`` (its
+        scope: None for the whole library), ``retired`` and ``created_at``.
+
+        Kept in memory and read again only after a change made here, so name and
+        family lookups (stages/vocab.py) cost no query. Treat the rows as read-only."""
+        rows = self._custom
+        if rows is None:
+            rows = self._custom = [
+                {"id": r["id"], "name": r["name"], "family": r["family"], "hint": r["hint"],
+                 "cues": {"see": json.loads(r["see"] or "[]"), "hear": json.loads(r["hear"] or "[]")},
+                 "custom": True, "title_id": r["title_id"], "retired": bool(r["retired"]),
+                 "created_at": r["created_at"]}
+                for r in self.db.query("SELECT * FROM custom_tags ORDER BY rowid")]
+        return rows
+
+    def custom_tag(self, tag: str) -> dict[str, Any]:
+        row = next((t for t in self.custom_tags() if t["id"] == tag), None)
+        if row is None:
+            raise NotFoundError(f"custom tag {tag} not found")
+        return row
+
+    def custom_tags_for(self, title: dict[str, Any]) -> list[dict[str, Any]]:
+        """The custom tags to propose on a title: library-wide ones and the ones scoped
+        to it (a movie) or to its show (an episode). Retired ones are left out."""
+        scope = {title["id"], title.get("parent_id")}
+        return [t for t in self.custom_tags()
+                if not t["retired"] and (t["title_id"] is None or t["title_id"] in scope)]
+
+    def _custom_name(self, name: Any, but: str = "") -> str:
+        name = " ".join(str(name or "").split())[:60]
+        if not name:
+            raise MarcarrError("give the tag a name")
+        if vocab.taken(name):
+            raise MarcarrError(f"the tag list already has a tag named {name}")
+        if any(t["id"] != but and name.lower() in (t["name"].lower(), t["id"]) for t in self.custom_tags()):
+            raise MarcarrError(f"there is already a custom tag named {name}")
+        return name
+
+    def _custom_fields(self, fields: dict[str, Any]) -> dict[str, Any]:
+        """Checked column values for the given fields (family, hint, see, hear, title_id)."""
+        out: dict[str, Any] = {}
+        if "family" in fields:
+            fam = str(fields["family"] or "").strip().lower()
+            if fam in ("", "none"):
+                out["family"] = None
+            elif fam in vocab.families():
+                out["family"] = fam
+            else:
+                raise MarcarrError(f"family must be one of {', '.join(vocab.families())}, or none")
+        if "hint" in fields:
+            out["hint"] = " ".join(str(fields["hint"] or "").split())[:MAX_HINT]
+        for kind in ("see", "hear"):
+            if kind in fields:
+                out[kind] = dumps(clean_cues(fields[kind]))
+        if "title_id" in fields:
+            tid = str(fields["title_id"] or "").strip() or None
+            if tid is not None:
+                t = self.title_or_none(tid)
+                if t is None:
+                    raise MarcarrError(f"no title {tid} to limit the tag to")
+                if t["type"] not in ("movie", "show"):
+                    raise MarcarrError("a tag is for the whole library, one show or one movie (not one episode)")
+            out["title_id"] = tid
+        return out
+
+    def add_custom_tag(self, name: Any, *, tag_id: Any = None, **fields: Any) -> dict[str, Any]:
+        """A new custom tag. Its id is the name as a slug unless one is given; neither
+        may be a bundled tag's id or name, and an id never starts with ``fc:``."""
+        name = self._custom_name(name)
+        tid = str(tag_id or "").strip().lower() or slug(name)
+        if tid.startswith(vocab.SMART):
+            raise MarcarrError(f"a tag id cannot start with {vocab.SMART} (those are Marcarr's own)")
+        if not tid or tid != slug(tid):
+            raise MarcarrError("a tag id is lowercase letters, digits and dashes, like running-gag")
+        if vocab.taken(tid):
+            raise MarcarrError(f"the tag list already has a tag with the id {tid}")
+        if any(tid in (t["id"], t["name"].lower()) for t in self.custom_tags()):
+            raise MarcarrError(f"there is already a custom tag with the id {tid}")
+        cols = {"family": None, "hint": "", "see": "[]", "hear": "[]", "title_id": None,
+                **self._custom_fields(fields)}
+        self.db.execute(
+            "INSERT INTO custom_tags (id, name, family, hint, see, hear, title_id, retired, created_at)"
+            " VALUES (?,?,?,?,?,?,?,0,?)",
+            (tid, name, cols["family"], cols["hint"], cols["see"], cols["hear"], cols["title_id"], now()))
+        self._custom = None
+        return self.custom_tag(tid)
+
+    def update_custom_tag(self, tag: str, **fields: Any) -> dict[str, Any]:
+        """Change name, family, hint, see, hear, title_id (scope) or retired. The id stays:
+        the scenes that have the tag name it by id."""
+        self.custom_tag(tag)
+        cols = self._custom_fields(fields)
+        if "name" in fields:
+            cols["name"] = self._custom_name(fields["name"], tag)
+        if "retired" in fields:
+            cols["retired"] = 1 if fields["retired"] else 0
+        if cols:
+            self.db.execute(f"UPDATE custom_tags SET {', '.join(k + ' = ?' for k in cols)} WHERE id = ?",  # noqa: S608
+                            (*cols.values(), tag))
+            self._custom = None
+        return self.custom_tag(tag)
+
+    def tag_uses(self, tag: str) -> int:
+        """Tagged ranges that name this tag, whatever their status or video."""
+        r = self.db.one("SELECT COUNT(*) AS n FROM tags WHERE tag = ?", (tag,))
+        return int(r["n"]) if r else 0
+
+    def delete_custom_tag(self, tag: str) -> dict[str, Any] | None:
+        """Remove a custom tag nothing uses; one that is on any scene is retired
+        instead (returned), so those scenes keep it and its name."""
+        self.custom_tag(tag)
+        if self.tag_uses(tag):
+            return self.update_custom_tag(tag, retired=True)
+        self.db.execute("DELETE FROM custom_tags WHERE id = ?", (tag,))
+        self._custom = None
+        return None
+
+    # -- collections (saved scene searches) --------------------------------------------
+    @staticmethod
+    def _collection(r: Any) -> dict[str, Any]:
+        d = dict(r)
+        d["tags"] = json.loads(d["tags"] or "[]")
+        d["signals"] = json.loads(d["signals"] or "[]")
+        return d
+
+    def collections(self) -> list[dict[str, Any]]:
+        rows = self.db.query("SELECT * FROM collections ORDER BY name COLLATE NOCASE")
+        return [self._collection(r) for r in rows]
+
+    def collection(self, cid: str) -> dict[str, Any]:
+        r = self.db.one("SELECT * FROM collections WHERE id = ?", (cid,))
+        if r is None:
+            raise NotFoundError(f"collection {cid} not found")
+        return self._collection(r)
+
+    def _collection_name(self, name: Any, but: str = "") -> str:
+        name = " ".join(str(name or "").split())[:80]
+        if not name:
+            raise MarcarrError("give the collection a name")
+        if self.db.one("SELECT 1 FROM collections WHERE name = ? COLLATE NOCASE AND id != ?", (name, but)):
+            raise MarcarrError(f"there is already a collection named {name}")
+        return name
+
+    def add_collection(self, name: Any, tags: list[str], person: str | None, q: str,
+                       signals: list[str]) -> dict[str, Any]:
+        name = self._collection_name(name)
+        if not (tags or person or q or signals):
+            raise MarcarrError("a collection needs a tag, a person or words to search for")
+        cid = "col_" + uuid.uuid4().hex[:10]
+        self.db.execute(
+            "INSERT INTO collections (id, name, tags, person, q, signals, created_at) VALUES (?,?,?,?,?,?,?)",
+            (cid, name, dumps(tags), person or None, q, dumps(signals), now()))
+        return self.collection(cid)
+
+    def rename_collection(self, cid: str, name: Any) -> dict[str, Any]:
+        self.collection(cid)
+        self.db.execute("UPDATE collections SET name = ? WHERE id = ?", (self._collection_name(name, cid), cid))
+        return self.collection(cid)
+
+    def delete_collection(self, cid: str) -> None:
+        self.collection(cid)
+        self.db.execute("DELETE FROM collections WHERE id = ?", (cid,))
 
     def place_scenes(self, *, place: str | None = None, video: str | None = None,
                      with_children: bool = True) -> list[dict[str, Any]]:
