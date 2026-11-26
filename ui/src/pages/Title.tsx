@@ -10,6 +10,7 @@ import { useApi } from '../lib/hooks';
 import { useToast } from '../lib/toast';
 import Show from './Show';
 import { CrumbLinks, personName, placeHref, posterColour, shortName, titleHref } from './title/common';
+import { castThrough, cutoffTime, parseThrough, pastCutoff, scenesThrough, timeLink } from './title/cutoff';
 import { Graph } from './title/Graph';
 import { Timeline } from './title/Timeline';
 import './title.css';
@@ -77,6 +78,21 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
   const scenes = useMemo<Scene[]>(() => [...(scenesRes.data?.items || [])].sort((a, b) => a.start - b.start), [scenesRes.data]);
   const signals = signalsRes.data?.items || [];
   const cast = useMemo(() => new Map<string, Person>(title.cast.map((p) => [p.id, p])), [title.cast]);
+  // Through this scene: the story stops here for the cast, places, tags and graph.
+  const through = parseThrough(params.get('through'), scenes.length);
+  const [draft, setDraft] = useState<number | null>(through);
+  useEffect(() => setDraft(through), [through]);
+  useEffect(() => {
+    if (draft === through) return;
+    const id = setTimeout(() => setParams((p) => {
+      const next = new URLSearchParams(p);
+      if (draft === null) next.delete('through'); else next.set('through', String(draft));
+      return next;
+    }, { replace: true }), 250);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft]);
+  const shownScenes = useMemo(() => scenesThrough(scenes, through), [scenes, through]);
 
   const [selN, setSelN] = useState<number | null>(null);
   const [at, setAt] = useState(0);
@@ -98,7 +114,8 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
     if (selN !== null || !scenes.length) return;
     const t = Number(params.get('t'));
     if (params.get('t') && Number.isFinite(t)) { seek(t); return; }
-    const s = scenes.find((x) => x.to_review > 0) || scenes.find((x) => x.tags.length > 0) || scenes[0];
+    const pool = shownScenes.length ? shownScenes : scenes;
+    const s = pool.find((x) => x.to_review > 0) || pool.find((x) => x.tags.length > 0) || pool[0];
     setSelN(s.n);
     setAt(s.start);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -115,7 +132,7 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
   };
 
   const copyLink = async () => {
-    const url = `${location.origin}${titleHref(title.id)}?t=${Math.floor(at)}`;
+    const url = timeLink(location.origin, titleHref(title.id), at, view, through);
     try {
       await navigator.clipboard.writeText(url);
       toast('Link copied');
@@ -130,7 +147,8 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
   const anyDone = !!video && STEPS.some((s) => video.steps[s] === 'done');
   const status = video ? statusOf(video) : { text: title.state.text, dot: DOT[title.state.kind] };
   const sel = scenes.find((s) => s.n === selN) || null;
-  const hidden = (s: Scene) => s.spoiler && !revealed.has(s.n);
+  const later = (s: Scene) => pastCutoff(s, through);
+  const hidden = (s: Scene) => (s.spoiler && !revealed.has(s.n)) || later(s);
   const reveal = (n: number) => setRevealed((r) => new Set(r).add(n));
 
   const meta = [
@@ -141,12 +159,13 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
     video && video.scenes ? plural(video.scenes, 'scene') : '',
   ].filter(Boolean).join(' · ');
 
-  const castShown = allCast ? title.cast : title.cast.slice(0, 8);
+  const castSoFar = castThrough(title.cast, scenes, through);
+  const castShown = allCast ? castSoFar : castSoFar.slice(0, 8);
 
   // Scene list: scenes with tags (all scenes when there are none yet, or tags are off).
-  const withTags = tagsOn ? scenes.filter((s) => s.tags.length > 0) : [];
-  const base = withTags.length ? withTags : scenes;
-  const review = scenes.filter((s) => s.to_review > 0);
+  const withTags = tagsOn ? shownScenes.filter((s) => s.tags.length > 0) : [];
+  const base = withTags.length ? withTags : shownScenes;
+  const review = shownScenes.filter((s) => s.to_review > 0);
   const pool = lf === 'review' ? review : base;
   const listed = showAll ? pool : pool.slice(0, LIST_MAX);
 
@@ -164,14 +183,15 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
             <span style={css('display: inline-flex; align-items: center; gap: 7px; font-weight: 600')}><span style={css('width:8px;height:8px;border-radius:50%;background:' + status.dot)} />{status.text}</span>
             {video && video.seconds_spent > 0 ? <Link to="/activity" className="mono" style={{ fontSize: 12 }}>took {took(video.seconds_spent)} · AI cost {money(video.ai_cost)}</Link> : null}
           </div>
-          {title.cast.length ? (
+          {castSoFar.length ? (
             <div style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px')}>
               {castShown.map((p) => (
                 <Link key={p.id} to={`/people/${encodeURIComponent(p.id)}`} title={p.actor} style={css('display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text); text-decoration: none')}>
                   <Avatar name={p.character || p.actor} photo={p.photo} size={24} />{p.character || p.actor}
                 </Link>
               ))}
-              {title.cast.length > 8 ? <button type="button" className="linkish" onClick={() => setAllCast(!allCast)}>{allCast ? 'Less' : 'All cast'}</button> : null}
+              {through !== null ? <span className="mono" style={css('font-size: 11.5px; color: var(--faint)')}>met by scene {through}</span> : null}
+              {castSoFar.length > 8 ? <button type="button" className="linkish" onClick={() => setAllCast(!allCast)}>{allCast ? 'Less' : 'All cast'}</button> : null}
             </div>
           ) : null}
         </div>
@@ -202,7 +222,7 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
                 <span role="img" aria-label="Picture at the playhead" style={css(`display:block;width:100%;height:100%;background:url("${urls.frame(video.id, at, 480)}") center/cover,url("${sel.still || urls.still(video.id, sel.n)}") center/cover` + (hidden(sel) ? ';filter:blur(9px);transform:scale(1.25)' : ''))} />
                 <span className="mono" style={css('position: absolute; left: 12px; top: 12px; padding: 3px 8px; border-radius: 6px; background: rgba(16,19,23,.8); color: #f7f6ef; font-size: 13px')}>{hms(at)}</span>
                 <div style={css('position: absolute; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px')}>
-                  {(facesOn ? sel.people : []).map((pid) => {
+                  {(facesOn && !later(sel) ? sel.people : []).map((pid) => {
                     const p = cast.get(pid);
                     const name = shortName(personName(pid, cast));
                     return (
@@ -216,7 +236,8 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
               <div style={css('flex: 2 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 10px')}>
                 <div className="mono" style={css('font-size: 12px; color: var(--dim)')}>Scene {sel.n} · {hms(sel.start)} to {hms(sel.end)}</div>
                 <div className="hd" style={css('font-size: 20px; font-weight: 600; line-height: 1.25')}>
-                  {hidden(sel) ? <button type="button" className="linkish" style={{ fontSize: 20 }} onClick={() => reveal(sel.n)}>Hidden as a spoiler. Show it</button> : sel.summary || 'No summary for this scene yet.'}
+                  {later(sel) ? <span style={{ color: 'var(--dim)' }}>After scene {through}, where the story is stopped.</span>
+                    : hidden(sel) ? <button type="button" className="linkish" style={{ fontSize: 20 }} onClick={() => reveal(sel.n)}>Hidden as a spoiler. Show it</button> : sel.summary || 'No summary for this scene yet.'}
                 </div>
                 {tagsOn && sel.place && sel.place_name && !hidden(sel) ? <Link to={placeHref(sel.place)} style={{ fontSize: 13 }}>{sel.place_name}</Link> : null}
                 {tagsOn && !hidden(sel) ? <Chips tags={sel.tags} /> : null}
@@ -228,14 +249,23 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
             </section>
           ) : null}
 
-          <div style={css('display: flex; justify-content: flex-end; margin-bottom: -6px')}>
+          <div style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-bottom: -6px')}>
+            {scenes.length > 1 ? (
+              <label style={css('flex: 1 1 320px; display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--dim)')}>
+                <span style={{ whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--text)' }}>Story so far</span>
+                <input type="range" min={1} max={scenes.length} value={draft ?? scenes.length} aria-label="Show the story through this scene"
+                  onChange={(e) => { const n = Number(e.target.value); setDraft(n >= scenes.length ? null : n); }} style={{ flex: 1, minWidth: 120, maxWidth: 360 }} />
+                <span className="mono" style={{ whiteSpace: 'nowrap' }}>{draft === null ? 'Whole story' : `Through scene ${draft} of ${scenes.length}`}</span>
+                {draft !== null ? <button type="button" className="linkish" onClick={() => setDraft(null)}>Show all</button> : null}
+              </label>
+            ) : <span style={{ flex: 1 }} />}
             <Seg label="View" value={view} onChange={setView} options={[['timeline', 'Timeline'], ['graph', 'Graph']]} />
           </div>
           {view === 'graph' ? (
-            <Graph title={title.id} video={video.id} through={null} scenes={scenes} stepsKey={stepsKey}
+            <Graph title={title.id} video={video.id} through={through} scenes={scenes} stepsKey={stepsKey}
               onSeek={(t) => { seek(t); playhead.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />
           ) : duration > 0 ? (
-            <Timeline duration={duration} scenes={scenes} signals={signals} cast={cast} tagsStep={video.steps.tags} facesStep={video.steps.faces}
+            <Timeline duration={duration} scenes={shownScenes} cutoff={cutoffTime(scenes, through)} signals={signals} cast={cast} tagsStep={video.steps.tags} facesStep={video.steps.faces}
               selected={selN} at={at} episode={title.type === 'episode'} onSeek={seek} />
           ) : null}
 

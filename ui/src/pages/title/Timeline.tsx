@@ -26,13 +26,14 @@ export interface TimelineProps {
   cast: Map<string, Person>;
   tagsStep: StepState;
   facesStep: StepState;
+  cutoff?: number | null; // the story stops here (seconds); later is shaded and left empty
   selected: number | null; // scene number
   at: number; // playhead, seconds
   episode: boolean;
   onSeek: (t: number) => void;
 }
 
-export function Timeline({ duration: D, scenes, signals, cast, tagsStep, facesStep, selected, at, episode, onSeek }: TimelineProps) {
+export function Timeline({ duration: D, scenes, cutoff = null, signals, cast, tagsStep, facesStep, selected, at, episode, onSeek }: TimelineProps) {
   const [zi, setZi] = useState(0);
   const z = ZOOMS[zi];
   const scroller = useRef<HTMLDivElement>(null);
@@ -159,6 +160,9 @@ export function Timeline({ duration: D, scenes, signals, cast, tagsStep, facesSt
                 {l.bars.map((b, i) => <span key={i} style={css(b.s)}>{b.t}</span>)}
               </div>
             ))}
+            {cutoff !== null && cutoff < D ? (
+              <span title="After the point the story is stopped at" style={css('position:absolute;top:14px;bottom:0;right:0;pointer-events:none;border-left:2px dashed var(--accent);background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--bg) 70%,transparent) 0 6px,color-mix(in srgb,var(--bg) 45%,transparent) 6px 12px);left:' + pct(cutoff))} />
+            ) : null}
             <span style={css('position:absolute;top:14px;bottom:0;width:2px;margin-left:-1px;background:var(--text);pointer-events:none;left:' + pct(at))} />
           </div>
         </div>
