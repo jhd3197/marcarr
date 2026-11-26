@@ -17,3 +17,4 @@ ui/dist/
 config.yaml
 graphify-out/
 *.log
+.mcp.json

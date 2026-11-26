@@ -78,9 +78,9 @@ def list_titles(type: str | None = None, analysed: bool | None = None, q: str = 
     if parent:
         items.sort(key=lambda s: (s.get("season") or 0, s.get("episode") or 0))
         _episode_tags(items)
-    if q:
-        ql = q.lower()
-        items = [s for s in items if ql in s["name"].lower()]
+    if q:  # every word somewhere in the name: "potter sorcerer"
+        words = q.lower().split()
+        items = [s for s in items if all(w in s["name"].lower() for w in words)]
     counts = {f: sum(1 for s in items if _match(f, s)) for f in FILTERS}
     if analysed is not None:
         items = [s for s in items if s["analysed"] == analysed]

@@ -90,3 +90,12 @@ def test_tagging_with_a_fake_model(core, analysed, monkeypatch) -> None:
     core.worker.run_pending("heavy")
     again = [t for t in core.store.tags(video=analysed) if t["tag"] == "christmas"]
     assert [t["status"] for t in again] == ["rejected"]
+
+
+def test_one_job_per_video_at_a_time(core, analysed) -> None:
+    first = core.pipeline.submit(analysed, ["signals"])
+    core.jobs.update(first["job"], status="running")
+    core.pipeline.submit(analysed, ["cast"])
+    assert core.jobs.next_queued("heavy") is None  # waits for the running one
+    core.jobs.update(first["job"], status="done")
+    assert core.jobs.next_queued("heavy") is not None
