@@ -1,6 +1,6 @@
 // One function per Marcarr API call. Pages import from here, never fetch directly.
 import type {
-  Activity, ApiKey, AtTime, Collection, CustomTag, CustomTagBody, Face, Line, Paged, Person, Place, PlexLibrary, ReviewItem, ReviewQueue,
+  Activity, ApiKey, AtTime, CharacterGraph, Collection, CustomTag, CustomTagBody, Face, Line, Paged, Person, Place, PlexLibrary, ReviewItem, ReviewQueue,
   Scene, SceneDetail, SceneHit, Settings, Signal, Status, Step, Tag, Title, TitleSummary, Video,
   Vocab, Webhook, WebhookCall,
 } from './types';
@@ -86,6 +86,8 @@ export const api = {
   titles: (q: { type?: string; analysed?: boolean; q?: string; filter?: string; page?: number; per_page?: number; parent?: string; season?: number } = {}) =>
     get<Paged<TitleSummary> & { counts: Record<string, number> }>('/titles', q),
   title: (id: string) => get<Title>(`/titles/${enc(id)}`),
+  graph: (id: string, q: { video?: string; through?: number | null } = {}) =>
+    get<CharacterGraph>(`/titles/${enc(id)}/graph`, { video: q.video, through: q.through ?? undefined }),
   runTitle: (id: string, steps?: Step[]) => post<{ queued: number }>(`/titles/${enc(id)}/run`, { steps }),
   video: (id: string) => get<Video>(`/videos/${id}`),
   runVideo: (id: string, steps?: Step[]) => post<{ queued: boolean; position: number }>(`/videos/${id}/run`, { steps }),

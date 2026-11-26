@@ -413,3 +413,36 @@ export interface PlexLibrary {
   type: 'movie' | 'show';
   count: number | null;
 }
+
+/** A character in the graph of a film or episode, from the scenes they are seen in. */
+export interface GraphPerson {
+  id: string;
+  name: string;
+  actor: string;
+  photo: string | null;
+  seconds: number; // screen time: the length of the scenes they are seen in
+  scenes: number[]; // scene numbers they are seen in
+  named: number; // scenes where they are only heard or named
+  first: { n: number; start: number } | null;
+  last: { n: number; start: number } | null;
+  gap: { from: number; to: number; start: number; end: number; seconds: number } | null; // longest absence
+  partners: { id: string; scenes: number }[]; // most frequent scene partners, top 5
+}
+
+/** Two people seen in the same scenes. */
+export interface GraphPair {
+  a: string;
+  b: string;
+  scenes: number[];
+  seconds: number;
+}
+
+export interface CharacterGraph {
+  title: string;
+  video: string;
+  total_scenes: number;
+  through: number | null; // the story stops at this scene; null = the whole story
+  scenes: number; // scenes counted
+  people: GraphPerson[]; // most screen time first
+  pairs: GraphPair[]; // most shared scenes first
+}

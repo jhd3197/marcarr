@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
+from .. import graph as graphmod
 from .. import states as stmod
 from ..errors import MarcarrError, NotFoundError
 from ..stages import index as idx
@@ -107,6 +108,37 @@ def _episode_tags(items: list[dict[str, Any]]) -> None:
 @router.get("/titles/{tid}", dependencies=[READ])
 def get_title(tid: str) -> dict[str, Any]:
     return views().title_detail(tid)
+
+
+@router.get("/titles/{tid}/graph", dependencies=[READ])
+def title_graph(tid: str, request: Request) -> dict[str, Any]:
+    """Who is seen with whom in a film or episode: people with their screen time,
+    first sighting and longest absence, and the pairs that share scenes.
+    ?video= picks an edition (default: the current one); ?through=N stops at scene N."""
+    c, v = core(), views()
+    t = c.store.title(tid)
+    vid = request.query_params.get("video")
+    if vid:
+        if c.store.video(vid)["title_id"] != tid:
+            raise NotFoundError(f"video {vid} is not a video of {tid}")
+    else:
+        cur = c.store.current_video(tid)
+        if cur is None:
+            raise NotFoundError(f"{t['name']} has no video yet")
+        vid = cur["id"]
+    raw = request.query_params.get("through")
+    through = None
+    if raw:
+        try:
+            through = max(1, int(raw))
+        except ValueError as exc:
+            raise MarcarrError(f"through must be a scene number, not {raw!r}") from exc
+    scenes = v.scenes(vid)
+    cast = {p["id"]: p for p in v.cast_people(tid)}
+    ids = {p for s in scenes for k in ("seen", "speakers", "mentioned") for p in s[k]}
+    for pid, p in c.store.people([x for x in ids if x not in cast]).items():
+        cast[pid] = v.person_view(p)
+    return {"title": tid, "video": vid, "total_scenes": len(scenes), **graphmod.build(scenes, cast, through)}
 
 
 @router.get("/titles/{tid}/poster")

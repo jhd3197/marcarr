@@ -4,12 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { api, urls } from '../api/client';
 import { STEPS, type Person, type Scene, type Title, type Video } from '../api/types';
-import { Avatar, Chips, css, DOT, ErrorBox, Loading, Pills } from '../components/kit';
+import { Avatar, Chips, css, DOT, ErrorBox, Loading, Pills, Seg } from '../components/kit';
 import { hms, length, money, plural, took } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import { useToast } from '../lib/toast';
 import Show from './Show';
 import { CrumbLinks, personName, placeHref, posterColour, shortName, titleHref } from './title/common';
+import { Graph } from './title/Graph';
 import { Timeline } from './title/Timeline';
 import './title.css';
 
@@ -62,7 +63,13 @@ function Poster({ title }: { title: Title }) {
 function Film({ title, reload }: { title: Title; reload: () => void }) {
   const video = title.video;
   const toast = useToast();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  const view: 'timeline' | 'graph' = params.get('view') === 'graph' ? 'graph' : 'timeline';
+  const setView = (v: 'timeline' | 'graph') => setParams((p) => {
+    const next = new URLSearchParams(p);
+    if (v === 'graph') next.set('view', 'graph'); else next.delete('view');
+    return next;
+  }, { replace: true });
   const stepsKey = video ? STEPS.map((s) => video.steps[s]).join(',') : '';
   // Reload scenes and signals whenever a step changes state (e.g. finishes while we watch).
   const scenesRes = useApi(() => (video ? api.scenes(video.id) : Promise.resolve(null)), [video?.id, stepsKey]);
@@ -221,7 +228,13 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
             </section>
           ) : null}
 
-          {duration > 0 ? (
+          <div style={css('display: flex; justify-content: flex-end; margin-bottom: -6px')}>
+            <Seg label="View" value={view} onChange={setView} options={[['timeline', 'Timeline'], ['graph', 'Graph']]} />
+          </div>
+          {view === 'graph' ? (
+            <Graph title={title.id} video={video.id} through={null} scenes={scenes} stepsKey={stepsKey}
+              onSeek={(t) => { seek(t); playhead.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />
+          ) : duration > 0 ? (
             <Timeline duration={duration} scenes={scenes} signals={signals} cast={cast} tagsStep={video.steps.tags} facesStep={video.steps.faces}
               selected={selN} at={at} episode={title.type === 'episode'} onSeek={seek} />
           ) : null}

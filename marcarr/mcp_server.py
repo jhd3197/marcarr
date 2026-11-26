@@ -157,6 +157,36 @@ def get_scene(video: str, scene: int) -> str:
     return _cut("\n".join(out))
 
 
+def who_is_with(title: str, person: str = "", through: int = 0) -> str:
+    """Who is seen with whom in a film or episode, from the scenes they share.
+
+    Args:
+        title: the title id (from list_titles).
+        person: a person id to list only their scene partners; empty for everyone.
+        through: stop at this scene number so nothing later is given away; 0 for the whole story.
+    """
+    from urllib.parse import quote
+
+    g = _call("GET", f"/titles/{quote(title, safe='')}/graph", params={"through": through or None})
+    names = {p["id"]: p["name"] for p in g["people"]}
+    if person:
+        p = next((x for x in g["people"] if x["id"] == person), None)
+        if p is None:
+            return f"{person} is not seen in these scenes"
+        out = [f"{p['name']}: seen in {len(p['scenes'])} scenes"
+               + (f", first in scene {p['first']['n']} at {_clock(p['first']['start'])}" if p["first"] else "")]
+        if p["gap"]:
+            out.append(f"longest absence: scene {p['gap']['from']} to {p['gap']['to']} ({_clock(p['gap']['seconds'])})")
+        pairs = [e for e in g["pairs"] if person in (e["a"], e["b"])]
+    else:
+        out = [f"{len(g['people'])} people in {g['scenes']} scenes"]
+        pairs = g["pairs"][:30]
+    for e in pairs:
+        out.append(f"  {names.get(e['a'], e['a'])} + {names.get(e['b'], e['b'])}: "
+                   f"scenes {', '.join(str(n) for n in e['scenes'][:12])}")
+    return _cut("\n".join(out))
+
+
 def read_dialogue(video: str, start: float = 0, end: float = 0) -> str:
     """The subtitle lines of a video between two times (seconds; end 0 = to the end).
 
@@ -223,7 +253,8 @@ def propose_tag(video: str, tag: str, start: float, end: float, seen: str = "", 
     return f"proposed {t['id']} {t['name']} {_clock(t['start'])}-{_clock(t['end'])}: waiting for review"
 
 
-TOOLS = [list_titles, find_scenes, list_collections, whats_at, get_scene, read_dialogue, look, list_tags, propose_tag]
+TOOLS = [list_titles, find_scenes, list_collections, whats_at, get_scene, who_is_with, read_dialogue, look, list_tags,
+         propose_tag]
 
 
 def tool_definitions() -> list[Any]:
