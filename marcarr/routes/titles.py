@@ -7,6 +7,8 @@ from typing import Any
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
+from .. import brief as briefmod
+from .. import graph as graphmod
 from .. import states as stmod
 from ..errors import MarcarrError, NotFoundError
 from ..stages import index as idx
@@ -109,6 +111,37 @@ def get_title(tid: str) -> dict[str, Any]:
     return views().title_detail(tid)
 
 
+@router.get("/titles/{tid}/graph", dependencies=[READ])
+def title_graph(tid: str, request: Request) -> dict[str, Any]:
+    """Who is seen with whom in a film or episode: people with their screen time,
+    first sighting and longest absence, and the pairs that share scenes.
+    ?video= picks an edition (default: the current one); ?through=N stops at scene N."""
+    c, v = core(), views()
+    t = c.store.title(tid)
+    vid = request.query_params.get("video")
+    if vid:
+        if c.store.video(vid)["title_id"] != tid:
+            raise NotFoundError(f"video {vid} is not a video of {tid}")
+    else:
+        cur = c.store.current_video(tid)
+        if cur is None:
+            raise NotFoundError(f"{t['name']} has no video yet")
+        vid = cur["id"]
+    raw = request.query_params.get("through")
+    through = None
+    if raw:
+        try:
+            through = max(1, int(raw))
+        except ValueError as exc:
+            raise MarcarrError(f"through must be a scene number, not {raw!r}") from exc
+    scenes = v.scenes(vid)
+    cast = {p["id"]: p for p in v.cast_people(tid)}
+    ids = {p for s in scenes for k in ("seen", "speakers", "mentioned") for p in s[k]}
+    for pid, p in c.store.people([x for x in ids if x not in cast]).items():
+        cast[pid] = v.person_view(p)
+    return {"title": tid, "video": vid, "total_scenes": len(scenes), **graphmod.build(scenes, cast, through)}
+
+
 @router.get("/titles/{tid}/poster")
 def poster(tid: str, width: int = 300) -> Response:
     c = core()
@@ -189,6 +222,14 @@ def _num(s: str | None) -> float | None:
 @router.get("/videos/{vid}/scenes/{n}", dependencies=[READ])
 def get_scene(vid: str, n: int) -> dict[str, Any]:
     return views().scene_detail(vid, n)
+
+
+@router.get("/videos/{vid}/scenes/{n}/brief", dependencies=[READ])
+def scene_brief(vid: str, n: int, request: Request) -> dict[str, Any]:
+    """The scene as plain text to paste anywhere (the same text the MCP get_scene
+    tool gives). ?link= is added at the end, so the reader can get back here."""
+    link = (request.query_params.get("link") or "")[:500]
+    return {"text": briefmod.scene_brief(views().scene_detail(vid, n), link=link)}
 
 
 @router.patch("/videos/{vid}/scenes/{n}", dependencies=[REVIEW])
@@ -274,6 +315,8 @@ def at_time(vid: str, t: float) -> dict[str, Any]:
     if any(ln["start"] <= t < ln["end"] for ln in subs) and "dialogue" not in here:
         here.append("dialogue")
     return {"t": t, "scene": n, "people": people,
+            "mentioned": list(scene["mentioned"]) if scene else [],
+            "speakers": list(scene["speakers"]) if scene else [],
             "tags": [{"tag": x["tag"], "name": v.tag_ref(x)["name"], "status": x["status"]} for x in tags],
             "place": scene["place"] if scene else None, "signals": sorted(here)}
 
@@ -351,19 +394,63 @@ def propose_tag(vid: str, request: Request, body: dict[str, Any] = Body(...)) ->
     if isinstance(ev, list):
         ev = {"seen": ev}
     people = [str(p) for p in body.get("people") or []]
+    mentioned = [str(p) for p in body.get("mentioned") or []]
     out = []
     for name in names:
         tag = tag_id(name)
         if not tag:
             raise MarcarrError(f"bad tag {name!r}")
         row = c.store.add_tag(vid, v["title_id"], tag, a, b, status=status, source=who,
-                              confidence=body.get("confidence"), people=people, evidence=ev,
+                              confidence=body.get("confidence"), people=people, evidence=ev, mentioned=mentioned,
                               summary=str(body.get("summary") or ""))
         view = views().tag_view(row)
         if status == "proposed":
             c.events.emit("tag.proposed", {"tag": view})
         out.append(view)
     return out[0] if len(out) == 1 else JSONResponse(out)  # type: ignore[return-value]
+
+
+# -- how characters are in a scene ----------------------------------------------------
+@router.get("/videos/{vid}/presence", dependencies=[READ])
+def list_presence(vid: str, request: Request) -> dict[str, Any]:
+    c = core()
+    c.store.video(vid)
+    rows = c.store.presence(video=vid, person=request.query_params.get("person") or None,
+                            start=_num(request.query_params.get("from")), end=_num(request.query_params.get("to")))
+    return {"total": len(rows), "items": [views().presence_view(r) for r in rows]}
+
+
+@router.post("/videos/{vid}/presence", dependencies=[PROPOSE])
+def add_presence(vid: str, request: Request, body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B008
+    """Report a character in a stretch: seen on screen, mentioned by name, or heard
+    speaking. Apps propose; the web page may add it kept."""
+    c = core()
+    v = c.store.video(vid)
+    a, b = clean_range(body.get("start"), body.get("end"), v["duration"])
+    who = source_of(request)
+    status = body.get("status") or "proposed"
+    if who != "person" and status == "accepted":
+        status = "proposed"
+    at = _num(body.get("at")) if body.get("at") is not None else None
+    row = c.store.add_presence(vid, str(body.get("person") or ""), a, b, str(body.get("how") or ""),
+                               source=who, status=status, at=at, note=str(body.get("note") or ""))
+    return views().presence_view(row)
+
+
+@router.post("/presence/{pid}/keep", dependencies=[REVIEW])
+def keep_presence(pid: str) -> dict[str, Any]:
+    return views().presence_view(core().store.set_presence_status(pid, "accepted"))
+
+
+@router.post("/presence/{pid}/drop", dependencies=[REVIEW])
+def drop_presence(pid: str) -> dict[str, Any]:
+    return views().presence_view(core().store.set_presence_status(pid, "rejected"))
+
+
+@router.delete("/presence/{pid}", status_code=204, dependencies=[REVIEW])
+def delete_presence(pid: str) -> Response:
+    core().store.delete_presence(pid)
+    return Response(status_code=204)
 
 
 # -- the whole analysis in one document -----------------------------------------------
@@ -384,7 +471,8 @@ def analysis(vid: str) -> dict[str, Any]:
         "steps": {s: i["state"] for s, i in info.items()},
         "shots": (c.store.result(vid, "shots") or {}).get("shots") or [],
         "subtitles": (c.store.result(vid, "subtitles") or {}).get("lines") or [],
-        "scenes": [{k: s[k] for k in ("n", "start", "end", "people", "place", "summary", "still")}
+        "scenes": [{k: s[k] for k in ("n", "start", "end", "people", "seen", "speakers", "mentioned", "place",
+                                    "summary", "still")}
                    | {"tags": [x["name"] for x in s["tags"] if x["status"] == "accepted"]} for s in scenes],
         "tags": [v.tag_view(r) for r in c.store.tags(video=vid, status=["accepted", "proposed"])],
         "signals": [{"signal": k, "start": a, "end": b} for k, rs in sig.items() for a, b in rs],

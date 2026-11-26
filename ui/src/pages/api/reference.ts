@@ -66,6 +66,28 @@ export const ENDPOINTS: Endpoint[] = [
     "response": "{\n  \"id\": \"movie:tmdb:671\",\n  \"name\": \"Harry Potter and the Sorcerer's Stone\",\n  \"year\": 2001,\n  \"collection\": \"Harry Potter\",\n  \"videos\": [\n    {\n      \"id\": \"7c9e21ab\",\n      \"edition\": \"Extended\",\n      \"duration\": 9530.56,\n      \"steps_done\": 7\n    }\n  ]\n}"
   },
   {
+    "group": "Titles",
+    "method": "GET",
+    "path": "/titles/{title}/graph",
+    "title": "Who is seen with whom",
+    "scope": "read",
+    "params": [
+      {
+        "name": "video",
+        "type": "id",
+        "what": "One edition (default: the current one)"
+      },
+      {
+        "name": "through",
+        "type": "number",
+        "what": "Stop at this scene, so nothing later shows"
+      }
+    ],
+    "example": "/titles/movie:tmdb:671/graph?through=40",
+    "body": null,
+    "response": "{\n  \"video\": \"7c9e21ab\",\n  \"total_scenes\": 212,\n  \"through\": 40,\n  \"scenes\": 40,\n  \"people\": [\n    {\n      \"id\": \"harry-potter\",\n      \"name\": \"Harry Potter\",\n      \"seconds\": 1480.5,\n      \"scenes\": [\n        1,\n        2,\n        5\n      ],\n      \"named\": 3,\n      \"first\": {\n        \"n\": 1,\n        \"start\": 0.0\n      },\n      \"gap\": {\n        \"from\": 12,\n        \"to\": 19,\n        \"start\": 1830.0,\n        \"end\": 2410.0,\n        \"seconds\": 580.0\n      },\n      \"partners\": [\n        {\n          \"id\": \"ron-weasley\",\n          \"scenes\": 21\n        }\n      ]\n    }\n  ],\n  \"pairs\": [\n    {\n      \"a\": \"harry-potter\",\n      \"b\": \"ron-weasley\",\n      \"scenes\": [\n        5,\n        6,\n        9\n      ],\n      \"seconds\": 960.0\n    }\n  ]\n}"
+  },
+  {
     "group": "Videos",
     "method": "GET",
     "path": "/videos/{video}",
@@ -142,6 +164,23 @@ export const ENDPOINTS: Endpoint[] = [
     "example": "/videos/7c9e21ab/at/5400",
     "body": null,
     "response": "{\n  \"t\": 5400.0,\n  \"scene\": 101,\n  \"people\": [\n    \"harry-potter\",\n    \"ron-weasley\"\n  ],\n  \"tags\": [\n    {\n      \"tag\": \"Christmas\",\n      \"status\": \"proposed\"\n    },\n    {\n      \"tag\": \"Castle\",\n      \"status\": \"accepted\"\n    }\n  ],\n  \"place\": \"hogwarts\",\n  \"signals\": [\n    \"dialogue\"\n  ]\n}"
+  },
+  {
+    "group": "Videos",
+    "method": "GET",
+    "path": "/videos/{video}/scenes/{n}/brief",
+    "title": "A scene as text to paste",
+    "scope": "read",
+    "params": [
+      {
+        "name": "link",
+        "type": "url",
+        "what": "Added at the end, to get back to the scene"
+      }
+    ],
+    "example": "/videos/7c9e21ab/scenes/101/brief",
+    "body": null,
+    "response": "{\n  \"text\": \"Harry Potter and the Sorcerer's Stone (2001), Extended: scene 101, 1:29:50 to 1:33:07\\nSeen: Harry Potter, Ron Weasley\\nTags:\\n  Christmas (to review): heard: Merry Christmas (1:29:58)\"\n}"
   },
   {
     "group": "Videos",
@@ -332,6 +371,38 @@ export const ENDPOINTS: Endpoint[] = [
     "example": "/videos/7c9e21ab/tags",
     "body": "{\n  \"tag\": \"Snow\",\n  \"start\": 5332.0,\n  \"end\": 5390.0,\n  \"evidence\": {\n    \"seen\": [\n      \"snow at the windows\"\n    ]\n  }\n}",
     "response": "{\n  \"id\": \"tag_5022\",\n  \"tag\": \"Snow\",\n  \"status\": \"proposed\",\n  \"source\": \"doblarr\"\n}"
+  },
+  {
+    "group": "People and places",
+    "method": "POST",
+    "path": "/videos/{video}/presence",
+    "title": "Report who is seen, heard or named",
+    "scope": "propose",
+    "params": [
+      {
+        "name": "person",
+        "type": "id",
+        "what": "A person id"
+      },
+      {
+        "name": "how",
+        "type": "seen | mentioned | speaker",
+        "what": "How they are in it"
+      },
+      {
+        "name": "start, end",
+        "type": "seconds",
+        "what": "The stretch"
+      },
+      {
+        "name": "at",
+        "type": "seconds",
+        "what": "The moment that shows it"
+      }
+    ],
+    "example": "/videos/7c9e21ab/presence",
+    "body": "{\n  \"person\": \"ron-weasley\",\n  \"how\": \"speaker\",\n  \"start\": 5340.0,\n  \"end\": 5344.5,\n  \"at\": 5341.0\n}",
+    "response": "{\n  \"id\": \"pre_51c0\",\n  \"person\": \"ron-weasley\",\n  \"how\": \"speaker\",\n  \"status\": \"proposed\",\n  \"source\": \"doblarr\"\n}"
   },
   {
     "group": "Tags",

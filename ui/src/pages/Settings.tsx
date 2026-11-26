@@ -12,6 +12,7 @@ import { useApi } from '../lib/hooks';
 import { money, plural } from '../lib/format';
 import { useToast } from '../lib/toast';
 import AiTest from './settings/AiTest';
+import ModelSelector, { useModels } from './settings/ModelSelector';
 import { Apps } from './settings/Apps';
 import { Places, type PlaceSources } from './settings/Places';
 import { Webhooks } from './settings/Webhooks';
@@ -107,6 +108,15 @@ export default function Settings() {
 
   if (loaded.error && !draft) return <div className="pg-settings" style={{ display: 'contents' }}><h1 className="h1">Settings</h1><ErrorBox error={loaded.error} retry={loaded.reload} /></div>;
   if (!draft || !saved) return <div className="pg-settings" style={{ display: 'contents' }}><h1 className="h1">Settings</h1><Loading /></div>;
+
+  const models = useModels(!!draft?.ai.enabled);
+  const [extraKeys, setExtraKeys] = useState<string[]>([]);
+  // a key row for every provider with a key, the chosen models' providers, and ones added now
+  const keyRows = draft ? Array.from(new Set([
+    ...Object.keys(draft.ai.keys || {}),
+    ...[draft.ai.model, draft.ai.vision_model].map((m) => (m.includes('/') ? m.split('/')[0] : '')).filter((p) => p && p !== 'claude-code' && p !== 'codex' && p !== 'ollama'),
+    ...extraKeys,
+  ])) : [];
 
   function set<K extends Section>(k: K, patch: Partial<NonNullable<Draft[K]>>) {
     setDraft((d) => (d ? { ...d, [k]: { ...(d[k] as object), ...patch } } : d));
@@ -283,10 +293,33 @@ export default function Settings() {
               <Row label="Use AI"><Switch on={draft.ai.enabled} label="Use AI" onChange={(v) => set('ai', { enabled: v })} /></Row>
               {draft.ai.enabled ? (
                 <>
-                  <Row label="Text model" htmlFor="s-text"><input id="s-text" type="text" className="sel mono" value={draft.ai.model} placeholder="provider/model" onChange={(e) => set('ai', { model: e.target.value })} style={{ width: 300 }} /></Row>
-                  <Row label="Vision model" htmlFor="s-vision"><input id="s-vision" type="text" className="sel mono" value={draft.ai.vision_model} placeholder="provider/model" onChange={(e) => set('ai', { vision_model: e.target.value })} style={{ width: 300 }} /></Row>
+                  <Row label="Text model">
+                    <ModelSelector label="Text model" value={draft.ai.model} list={models.list} loading={models.loading} onChange={(v) => set('ai', { model: v })} />
+                    <span style={{ fontSize: 12.5, color: 'var(--dim)' }}>Reads the dialogue.</span>
+                  </Row>
+                  <Row label="Vision model">
+                    <ModelSelector label="Vision model" needVision value={draft.ai.vision_model} placeholder="Same as the text model" list={models.list} loading={models.loading} onChange={(v) => set('ai', { vision_model: v })} />
+                    <span style={{ fontSize: 12.5, color: 'var(--dim)' }}>Looks at contact sheets of frames.</span>
+                  </Row>
+                  <Row label="Thinking">
+                    <Seg label="How hard a reasoning model thinks" value={draft.ai.effort || 'low'} options={[['low', 'Low'], ['medium', 'Medium'], ['high', 'High']]} onChange={(v) => set('ai', { effort: v })} />
+                    <span style={{ fontSize: 12.5, color: 'var(--dim)' }}>For reasoning models only. Low is enough to tag scenes and costs the least.</span>
+                  </Row>
                   <Row label="Server address" htmlFor="s-base"><input id="s-base" type="url" className="inp mono" value={draft.ai.base_url} placeholder="Leave empty for the provider's own" onChange={(e) => set('ai', { base_url: e.target.value })} style={{ flex: '1 1 240px', width: 'auto' }} /></Row>
-                  <Row label="API key"><Secret id="s-aikey" label="AI API key" value={draft.ai.api_key} reset={reset} onChange={(v) => set('ai', { api_key: v })} /></Row>
+                  {keyRows.map((prov, i) => (
+                    <Row key={prov} label={i ? '' : 'Keys'}>
+                      <span className="mono" style={{ width: 90, color: 'var(--dim)' }}>{prov}</span>
+                      <Secret id={'s-key-' + prov} label={prov + ' API key'} value={(draft.ai.keys || {})[prov] || ''} reset={reset} onChange={(v) => set('ai', { keys: { ...(draft.ai.keys || {}), [prov]: v } })} />
+                    </Row>
+                  ))}
+                  <Row label={keyRows.length ? '' : 'Keys'}>
+                    <select className="sel" aria-label="Add a key for another provider" value="" onChange={(e) => { const p = e.target.value; if (p) { setExtraKeys((xs) => [...xs, p]); } }}>
+                      <option value="">Add a key for…</option>
+                      {(models.list?.keys || []).filter((x) => !keyRows.includes(x.provider)).map((x) => <option key={x.provider} value={x.provider}>{x.provider}</option>)}
+                    </select>
+                    <button type="button" className="btn sm ghost" onClick={models.reload} disabled={models.loading}>{models.loading ? 'Asking…' : 'Refresh the model list'}</button>
+                    <span style={{ fontSize: 12.5, color: 'var(--dim)' }}>Your Claude Code and Codex logins show up as providers on their own.</span>
+                  </Row>
                   <Row label="Check" top><AiTest dirty={dirty} /></Row>
                   <Row label="Monthly limit" htmlFor="s-limit">
                     <input key={'lim' + reset} id="s-limit" type="text" className="inp mono" defaultValue={money(draft.ai.monthly_limit)} style={{ width: 110 }}

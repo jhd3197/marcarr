@@ -53,12 +53,26 @@ class Core:
         }
         self.worker = Worker(self.jobs, handlers, on_finish=self._finished,
                              heavy_threads=int(cfg.analysis.at_once))
+        self._move_ai_key()
         if self.store.kv("paused", False):
             self.worker.pause()
         if start_worker:
             self.worker.start()
 
     # -- config ------------------------------------------------------------------------
+    def _move_ai_key(self) -> None:
+        """The single AI key of the first settings goes under its model's provider."""
+        ai_cfg = self.cfg.ai
+        prov = ai_cfg.model.split("/", 1)[0] if "/" in ai_cfg.model else ""
+        if ai_cfg.api_key and prov and prov not in (ai_cfg.keys or {}):
+            new = self.cfg.model_copy(deep=True)
+            new.ai.keys = {**(ai_cfg.keys or {}), prov: ai_cfg.api_key}
+            new.ai.api_key = ""
+            try:
+                self.save_config(new)
+            except Exception:  # noqa: BLE001 - a read-only config keeps working as before
+                log.warning("could not move the AI key under %s", prov)
+
     def save_config(self, new: Config) -> None:
         with self._lock:
             cfgmod.save(new, self.cfg_path)

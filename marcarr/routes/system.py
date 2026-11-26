@@ -141,6 +141,14 @@ def test_ai() -> dict[str, Any]:
     return {"text": check(None), "vision": check([buf.getvalue()])}
 
 
+@router.get("/ai/models", dependencies=[UI])
+def ai_models(refresh: bool = False) -> dict[str, Any]:
+    """Every chat model the configured providers offer, from Prompture."""
+    from .. import models
+
+    return models.available(core().cfg.ai, refresh)
+
+
 @router.get("/plex/libraries", dependencies=[UI])
 def plex_libraries() -> list[dict[str, Any]]:
     return core().library.sections()
@@ -257,6 +265,13 @@ def _month() -> str:
     from ..store import month_start
 
     return month_start()
+
+
+@router.get("/activity/log", dependencies=[READ])
+def activity_log(video: str | None = None, after: int = 0, limit: int = 300) -> dict[str, Any]:
+    """The live log: what each step is doing, newest last. Poll with after=<last n>."""
+    rows = core().pipeline.log_lines(video, after)
+    return {"items": rows[-max(1, min(limit, 1000)):], "last": rows[-1]["n"] if rows else after}
 
 
 @router.post("/activity/analyse", dependencies=[RUN])

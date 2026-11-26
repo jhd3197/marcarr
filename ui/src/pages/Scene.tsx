@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { api, urls } from '../api/client';
-import type { Face, Person, SceneDetail, Tag } from '../api/types';
+import type { EvidenceItem, Face, Person, SceneDetail, Tag } from '../api/types';
 import { css, ErrorBox, Loading } from '../components/kit';
 import { useApp } from '../components/Shell';
-import { hms, ms } from '../lib/format';
+import { lineFor } from '../lib/evidence';
+import { evAt, evText, hms, ms } from '../lib/format';
 import { useApi, useKeys } from '../lib/hooks';
 import { useToast } from '../lib/toast';
 import { bgUrl, chipCss, errText, familyName, sourceName } from './review/labels';
@@ -65,6 +66,40 @@ function SceneView({ s, set, nav, toast, refreshStatus }: {
   const [pick, setPick] = useState('');
   const [faceState, setFaceState] = useState<Record<string, 'yes' | 'no'>>({});
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [frameAt, setFrameAt] = useState<{ t: number; what: string } | null>(null);
+  const [flash, setFlash] = useState<number | null>(null);
+  useEffect(() => {
+    if (flash === null) return;
+    const id = setTimeout(() => setFlash(null), 1800);
+    return () => clearTimeout(id);
+  }, [flash]);
+  useEffect(() => {
+    if (!frameAt) return;
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setFrameAt(null); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [frameAt]);
+
+  // -- evidence: jump to the line that was heard, open the frame where it was seen --
+  const toLine = (item: EvidenceItem) => {
+    const i = lineFor(s.lines, item);
+    if (i < 0) {
+      toast(`"${evText(item)}" is not in this scene's dialogue`, true);
+      return;
+    }
+    document.getElementById(`ln-${i}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setFlash(i);
+  };
+  const copyBrief = async () => {
+    try {
+      const link = `${location.origin}/titles/${encodeURIComponent(s.title.id)}?t=${Math.floor(s.start)}`;
+      const { text } = await api.sceneBrief(s.video, s.n, link);
+      await navigator.clipboard.writeText(text);
+      toast('Brief copied');
+    } catch (e) {
+      toast(`Could not copy the brief: ${errText(e)}`, true);
+    }
+  };
   useEffect(() => setTrim({ s: s.start, e: s.end }), [s.start, s.end]);
 
   // Answers can come back out of order: always build on the latest scene.
@@ -139,7 +174,7 @@ function SceneView({ s, set, nav, toast, refreshStatus }: {
     const m = new Map<string, string>();
     for (const t of s.all_tags) {
       if (t.status === 'rejected') continue;
-      for (const h of t.evidence?.heard || []) if (h.trim()) m.set(h.trim().toLowerCase(), t.family || 'place');
+      for (const h of (t.evidence?.heard || []).map(evText)) if (h.trim()) m.set(h.trim().toLowerCase(), t.family || 'place');
     }
     return m;
   }, [s.all_tags]);
@@ -160,6 +195,13 @@ function SceneView({ s, set, nav, toast, refreshStatus }: {
       return { id, p, best, open, confirmed, rejected, unsure: !confirmed && !rejected && open.length > 0 && (best?.score ?? 1) < UNSURE_BELOW };
     });
   }, [s.cast, s.faces, s.people]);
+  // People heard speaking (an app found them) or only named in the dialogue, not seen.
+  const offscreen = useMemo(() => {
+    const byId = new Map<string, Person>(s.cast.map((p) => [p.id, p]));
+    const shown = new Set(people.map((x) => x.id));
+    return [...(s.speakers || []).map((id) => ({ id, how: 'Heard speaking, not seen' })), ...(s.mentioned || []).map((id) => ({ id, how: 'Only named in the dialogue' }))]
+      .filter((x) => !shown.has(x.id)).map((x) => ({ ...x, p: byId.get(x.id) }));
+  }, [s.cast, s.speakers, s.mentioned, people]);
 
   const judgeFaces = async (id: string, faces: Face[], v: 'yes' | 'no') => {
     try {
@@ -188,6 +230,7 @@ function SceneView({ s, set, nav, toast, refreshStatus }: {
         </div>
         <div style={css('display: flex; align-items: center; gap: 8px')}>
           <span className="mono" style={css('font-size: 12px; color: var(--dim)')}>{left ? `${left} to decide` : 'All decided'}</span>
+          <button type="button" className="btn ghost" onClick={() => void copyBrief()}>Copy brief</button>
           <button type="button" className="btn" disabled={s.prev == null} onClick={() => s.prev != null && nav(s.prev)}>Previous scene</button>
           <button type="button" className="btn" disabled={s.next == null} onClick={() => s.next != null && nav(s.next)}>Next scene</button>
         </div>
@@ -242,7 +285,7 @@ function SceneView({ s, set, nav, toast, refreshStatus }: {
           <section aria-label="Dialogue">
             <h2 className="h2" style={css('padding-bottom: 8px')}>Dialogue</h2>
             {s.lines.length ? s.lines.map((l, i) => (
-              <div key={l.start + ':' + i} className="dl">
+              <div key={l.start + ':' + i} id={`ln-${i}`} className={'dl' + (flash === i ? ' flash' : '')}>
                 <span className="mono" style={css('flex: none; width: 58px; font-size: 12px; color: var(--faint); padding-top: 2px')}>{hms(l.start)}</span>
                 <span>{markLine(l.text, terms)}</span>
               </div>
@@ -254,8 +297,8 @@ function SceneView({ s, set, nav, toast, refreshStatus }: {
           <section aria-label="Tags" className="box" style={css('padding: 6px 18px')}>
             {s.all_tags.map((t) => {
               const byPerson = t.source === 'person';
-              const heard = (t.evidence?.heard || []).join(', ');
-              const seen = (t.evidence?.seen || []).join(', ');
+              const heard = t.evidence?.heard || [];
+              const seen = t.evidence?.seen || [];
               return (
                 <div key={t.id} className="tr">
                   <div style={css('flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 5px')}>
@@ -265,8 +308,23 @@ function SceneView({ s, set, nav, toast, refreshStatus }: {
                         {familyName(t.family)}{byPerson ? ' · kept by you' : ' · proposed by ' + sourceName(t.source)}
                       </span>
                     </div>
-                    {heard ? <div className="ev"><b>Heard</b>{heard}</div> : null}
-                    {seen ? <div className="ev"><b>Seen</b>{seen}</div> : null}
+                    {heard.length ? (
+                      <div className="ev"><b>Heard</b>{heard.map((h, i) => (
+                        <span key={i}>{i ? ', ' : ''}<button type="button" className="evb" title="Show the line" aria-label={`${evText(h)}: show the line`} onClick={() => toLine(h)}>
+                          {evText(h)}{evAt(h) !== null ? <i>{hms(evAt(h)!)}</i> : null}
+                        </button></span>
+                      ))}</div>
+                    ) : null}
+                    {seen.length ? (
+                      <div className="ev"><b>Seen</b>{seen.map((x, i) => {
+                        const at = evAt(x);
+                        return (
+                          <span key={i}>{i ? ', ' : ''}{at !== null ? (
+                            <button type="button" className="evb" title="Open the frame" aria-label={`${evText(x)}: open the frame at ${hms(at)}`} onClick={() => setFrameAt({ t: at, what: evText(x) })}>{evText(x)}<i>{hms(at)}</i></button>
+                          ) : evText(x)}</span>
+                        );
+                      })}</div>
+                    ) : null}
                   </div>
                   {t.status === 'proposed' ? (
                     <div style={css('display: flex; gap: 6px')}>
@@ -331,10 +389,31 @@ function SceneView({ s, set, nav, toast, refreshStatus }: {
                 </div>
               );
             })}
-            {!people.length ? <div style={css('font-size: 13px; color: var(--faint); padding: 10px 0; border-top: 1px solid var(--line)')}>No one recognised in this scene.</div> : null}
+            {offscreen.map(({ id, p, how }) => (
+              <div key={id} style={css('display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line)')}>
+                <span style={css(AV(44) + (p?.photo ? ` url(${p.photo}) center/cover` : '') + ';opacity:.6;outline:1.5px dotted var(--faint);outline-offset:2px')} />
+                <div style={css('flex: 1 1 160px; min-width: 0')}>
+                  <div style={css('font-size: 15px; font-weight: 600')}><Link to={`/people/${encodeURIComponent(id)}`} style={{ color: 'inherit', textDecoration: 'none' }}>{(p?.character || p?.actor || id).split(/\s+/)[0]}</Link></div>
+                  <div style={css('font-size: 12px; color: var(--dim)')}>{how}</div>
+                </div>
+              </div>
+            ))}
+            {!people.length && !offscreen.length ? <div style={css('font-size: 13px; color: var(--faint); padding: 10px 0; border-top: 1px solid var(--line)')}>No one recognised in this scene.</div> : null}
           </section>
         </div>
       </div>
+      {frameAt ? (
+        <div role="dialog" aria-modal="true" aria-label={`Frame at ${hms(frameAt.t)}`} className="frame-over" onClick={(e) => { if (e.target === e.currentTarget) setFrameAt(null); }}>
+          <div className="box" style={css('max-width: min(960px, 92vw); padding: 12px; display: flex; flex-direction: column; gap: 10px')}>
+            <img src={urls.frame(s.video, frameAt.t, 720)} alt={`${frameAt.what} at ${hms(frameAt.t)}`} style={css('display: block; width: 100%; border-radius: 6px; background: #000')} />
+            <div style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 8px')}>
+              <span style={css('flex: 1; font-size: 13.5px')}><b>{frameAt.what}</b> <span className="mono" style={{ color: 'var(--dim)' }}>{hms(frameAt.t)}</span></span>
+              <button type="button" className="btn sm" onClick={() => { setPlay(Math.max(0, frameAt.t - s.start)); setFrameAt(null); }}>Play from here</button>
+              <button type="button" className="btn sm ghost" autoFocus onClick={() => setFrameAt(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

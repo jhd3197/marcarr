@@ -8,6 +8,7 @@ import { ErrorBox, Loading, Pills, STATE_TEXT, StepCell } from '../components/ki
 import { useApi } from '../lib/hooks';
 import { length, money, plural, took } from '../lib/format';
 import { useToast } from '../lib/toast';
+import LiveLog from './activity/LiveLog';
 import { errText } from './settings/util';
 import './Activity.css';
 
@@ -84,6 +85,13 @@ export default function Activity() {
   }
 
   const running = data.running;
+  const names: Record<string, string> = Object.fromEntries(data.rows.map((r) => [r.video, r.title_name]));
+  // ", 43%" after "Analysing: signals, step 4 of 7"
+  const runPct = (r: (typeof data.rows)[number]) => {
+    const s = STEPS.find((x) => r.steps[x] === 'run');
+    const p = s ? r.step_info?.[s]?.progress : null;
+    return p != null ? `, ${Math.round(p * 100)}%` : '';
+  };
   const stepPct = running && running.progress != null ? Math.round(running.progress * 100) : 0;
   const m = data.month;
   const aiPct = m.ai_limit > 0 ? Math.min(100, Math.round((m.ai_cost / m.ai_limit) * 100)) : 0;
@@ -102,7 +110,10 @@ export default function Activity() {
           <div className="lab">Running now</div>
           {running ? (
             <>
-              <div className="big" style={{ marginTop: 6 }}>{running.title_name}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginTop: 6 }}>
+                <div className="big" style={{ flex: 1 }}>{running.title_name}</div>
+                <div className="mono" style={{ fontSize: 30, fontWeight: 500, color: 'var(--accent)' }}>{stepPct}%</div>
+              </div>
               <div style={{ marginTop: 4, fontSize: 13, color: 'var(--dim)' }}>
                 <span className="mono">{running.step}</span>, step {STEPS.indexOf(running.step) + 1} of 7
                 {running.eta_seconds ? ` · about ${took(running.eta_seconds)} left on this step` : ''}
@@ -166,7 +177,7 @@ export default function Activity() {
                   {STEPS.map((s) => <span key={s} style={{ textAlign: 'center' }}><StepCell step={s} state={r.steps[s]} progress={r.step_info?.[s]?.progress} /></span>)}
                   <span className="mono" style={{ textAlign: 'right', fontSize: 13 }}>{untouched ? '' : took(r.seconds)}</span>
                   <span className="mono" style={{ textAlign: 'right', fontSize: 13 }}>{untouched ? '' : money(r.ai_cost)}</span>
-                  <span style={{ fontSize: 12.5, fontWeight: r.state.kind === 'done' ? 500 : 600, color: queued ? 'var(--dim)' : stateColor(r) }}>{queued ? 'Queued' : r.state.text}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: r.state.kind === 'done' ? 500 : 600, color: queued ? 'var(--dim)' : stateColor(r) }}>{queued ? 'Queued' : r.state.text}{runPct(r)}</span>
                   <span style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                     {a ? <button type="button" className="btn sm" onClick={() => run(r.video, a.steps)}>{a.label}</button> : null}
                   </span>
@@ -180,13 +191,14 @@ export default function Activity() {
                       return (
                         <div className="st" key={s} title={info?.detail || undefined}>
                           <span className="mono" style={{ fontWeight: 500 }}>{s}</span>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><StepCell step={s} state={st} progress={info?.progress} />{STATE_TEXT[st]}</span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><StepCell step={s} state={st} progress={info?.progress} />{STATE_TEXT[st]}{st === 'run' && info?.progress != null ? ` ${Math.round(info.progress * 100)}%` : ''}</span>
                           <span className="mono" style={{ textAlign: 'right' }}>{info?.seconds != null && st !== 'notrun' ? took(info.seconds) : ''}</span>
                           <span className="mono" style={{ color: 'var(--dim)' }}>{cost}{cost && info?.detail ? ': ' : ''}{info?.detail || ''}</span>
                           <span>{st !== 'none' && st !== 'off' && st !== 'run' && st !== 'queued' ? <button type="button" className="btn sm ghost" onClick={() => run(r.video, [s])}>Rerun</button> : null}</span>
                         </div>
                       );
                     })}
+                    <div style={{ marginTop: 12 }}><LiveLog video={r.video} names={names} height={200} title={'What ' + r.title_name + ' is doing'} /></div>
                   </div>
                 ) : null}
               </div>
@@ -194,6 +206,8 @@ export default function Activity() {
           })}
         </div>
       </div>
+
+      <LiveLog names={names} />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', fontSize: 12, color: 'var(--dim)' }}>
         {LEGEND.map((k) => <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}><span aria-hidden="true" style={{ display: 'inline-flex' }}><StepCell step="shots" state={k} /></span>{STATE_TEXT[k]}</span>)}

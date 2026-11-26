@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import threading
 import time
+from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -30,6 +32,7 @@ log = logging.getLogger("marcarr.pipeline")
 
 MIN_SHOT = 0.4  # a "shot" shorter than this is a flash, merged into the one before
 STILL_H = 360
+LOG_LINES = 500  # live-log lines kept per video (memory only)
 
 
 class StepSkip(Exception):
@@ -81,6 +84,26 @@ class Pipeline:
         self.core = core
         self.store = core.store
         self._engine: Any = None
+        self._logs: dict[str, deque[dict[str, Any]]] = {}
+        self._log_n = 0
+        self._log_lock = threading.Lock()
+
+    # -- the live log ------------------------------------------------------------------
+    def log(self, vid: str, step: str, text: str, pct: float | None = None) -> None:
+        """One line of what a video's analysis is doing, for the live view."""
+        with self._log_lock:
+            self._log_n += 1
+            self._logs.setdefault(vid, deque(maxlen=LOG_LINES)).append({
+                "n": self._log_n, "at": now(), "step": step, "text": text,
+                "pct": None if pct is None else round(pct * 100, 1)})
+
+    def log_lines(self, vid: str | None = None, after: int = 0) -> list[dict[str, Any]]:
+        with self._log_lock:
+            if vid:
+                rows = [{**x, "video": vid} for x in self._logs.get(vid, ())]
+            else:
+                rows = [{**x, "video": v} for v, q in self._logs.items() for x in q]
+        return sorted((r for r in rows if r["n"] > after), key=lambda r: r["n"])
 
     # -- submitting --------------------------------------------------------------------
     def submit(self, vid: str, steps: list[str] | None = None, *, only_needed: bool = False) -> dict[str, Any]:
@@ -184,6 +207,8 @@ class Pipeline:
         started = time.monotonic()
         self.store.set_step(vid, step, state="run", progress=0.0, started_at=now(), detail="")
         last = [0.0]
+        logged = [-1.0, ""]
+        self.log(vid, step, f"starting {step}", 0.0)
 
         def progress(p: float, msg: str = "") -> None:
             ctx.check()
@@ -192,8 +217,22 @@ class Pipeline:
                 last[0] = p
                 self.store.set_step(vid, step, progress=round(p, 3))
                 ctx.progress((i + p) / max(1, n), f"{step}: {msg}" if msg else step)
+            # the live log: a new message, or every 2% so a slow step is seen moving
+            if (msg and msg != logged[1]) or p - logged[0] >= 0.02:
+                logged[0], logged[1] = p, msg or logged[1]
+                self.log(vid, step, msg or logged[1] or "working", p)
 
         state, detail = "done", ""
+        calls = [0]
+
+        def model_call(usage: dict[str, Any]) -> None:
+            calls[0] += 1
+            tok = usage.get("total_tokens") or 0
+            cost = float(usage.get("cost") or 0)
+            self.log(vid, step, f"model call {calls[0]}: {tok:,} tokens, ${cost:.4f}"
+                     f" (step so far ${meter.cost:.4f})")
+
+        ai.on_call(model_call)
         with ai.metered() as meter:
             try:
                 detail = getattr(self, f"step_{step}")(vid, progress, ctx)
@@ -205,6 +244,7 @@ class Pipeline:
                 log.exception("step %s of %s failed", step, vid)
                 state, detail = "failed", str(exc) or exc.__class__.__name__
         seconds = round(time.monotonic() - started, 1)
+        self.log(vid, step, f"{state}: {detail}" if detail else state, 1.0 if state == "done" else None)
         self.store.set_step(vid, step, state=state, detail=(detail or "")[:300], progress=None,
                             seconds=seconds, ai_cost=round(meter.cost, 4), finished_at=now(),
                             inputs=inputs, version=stmod.VERSIONS[step])
@@ -243,7 +283,9 @@ class Pipeline:
         ff = self.core.cfg.ffmpeg
         lang = self.core.cfg.analysis.language
         progress(0.05, "reading subtitles")
-        lines, src = subs_mod.load(v["path"], ff.binary, ff.probe_binary, lang)
+        lines, src = subs_mod.load(v["path"], ff.binary, ff.probe_binary, lang,
+                                   progress=lambda p: progress(0.05 + 0.9 * p, "reading the subtitle track"),
+                                   cancel=ctx.cancel)
         if not lines and self.core.cfg.analysis.transcribe:
             progress(0.1, "transcribing the audio")
             from prompture.media.understand import transcribe

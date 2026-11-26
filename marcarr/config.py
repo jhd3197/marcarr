@@ -75,7 +75,13 @@ class AICfg(BaseModel):
     model: str = ""  # text model, a Prompture model string
     vision_model: str = ""  # looks at contact sheets; empty = model
     base_url: str = ""
-    api_key: str = Secret()
+    api_key: str = Secret()  # used when keys has none for the model's provider
+    # One key per Prompture provider ("openai", "claude", "google"...), so the text and
+    # the vision model may come from different providers. Masked like any secret.
+    keys: dict[str, str] = Field(default_factory=dict)
+    # How hard a reasoning model thinks (gpt-5, o-series, Claude with thinking).
+    # Tagging reads dialogue and looks at frames: low is enough and much cheaper.
+    effort: Literal["low", "medium", "high"] = "low"
     timeout: int = 120
     monthly_limit: float = 10.0  # dollars; the tags step stops when this month passes it
     auto_accept: float = Field(default=1.0, ge=0, le=1)  # AI tags this sure are kept at once
@@ -258,6 +264,7 @@ def masked(cfg: Config) -> dict[str, Any]:
         parent, leaf = _dig(d, path)
         if parent.get(leaf):
             parent[leaf] = MASK
+    d["ai"]["keys"] = {k: MASK for k, v in (d["ai"].get("keys") or {}).items() if v}
     return d
 
 
@@ -269,6 +276,18 @@ def merge_update(current: Config, incoming: dict[str, Any]) -> Config:
     def walk(dst: dict[str, Any], src: dict[str, Any], prefix: str) -> None:
         for k, v in src.items():
             path = prefix + k
+            if path == "ai.keys" and isinstance(v, dict):
+                # per-provider keys: the mask keeps a key, "" removes it, text sets it
+                keys = dict(dst.get(k) or {})
+                for prov, key in v.items():
+                    if key == MASK:
+                        continue
+                    if key:
+                        keys[str(prov)] = str(key).strip()
+                    else:
+                        keys.pop(str(prov), None)
+                dst[k] = keys
+                continue
             if k not in dst:
                 raise ConfigError(f"unknown setting {path!r}")
             if isinstance(v, dict) and isinstance(dst.get(k), dict) and k != "steps":
