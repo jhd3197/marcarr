@@ -133,8 +133,10 @@ class Pipeline:
         vid = job["payload"].get("video")
         if not vid:
             return
+        mine = set(job["payload"].get("steps") or STEPS)
         for s, r in self.store.step_rows(vid).items():
-            if r["state"] in ("queued", "run"):
+            # only this job's steps: another queued job of the same video keeps its own
+            if s in mine and r["state"] in ("queued", "run"):
                 back = "done" if r.get("finished_at") and r.get("seconds") is not None else "notrun"
                 detail = "Cancelled" if job["status"] == "cancelled" else (job.get("message") or "")
                 self.store.set_step(vid, s, state="failed" if job["status"] == "failed" and back == "notrun" else back,
