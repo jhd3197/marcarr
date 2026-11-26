@@ -78,9 +78,9 @@ def list_titles(type: str | None = None, analysed: bool | None = None, q: str = 
     if parent:
         items.sort(key=lambda s: (s.get("season") or 0, s.get("episode") or 0))
         _episode_tags(items)
-    if q:
-        ql = q.lower()
-        items = [s for s in items if ql in s["name"].lower()]
+    if q:  # every word somewhere in the name: "potter sorcerer"
+        words = q.lower().split()
+        items = [s for s in items if all(w in s["name"].lower() for w in words)]
     counts = {f: sum(1 for s in items if _match(f, s)) for f in FILTERS}
     if analysed is not None:
         items = [s for s in items if s["analysed"] == analysed]
@@ -117,9 +117,11 @@ def poster(tid: str, width: int = 300) -> Response:
     if not t["poster"] or plex is None:
         raise NotFoundError("no poster")
     width = max(80, min(int(width), 800))
-    out = cache_path("posters", tid, t["poster"], width)
+    out = cache_path("posters", "clean", tid, t["poster"], width)
     if not out.is_file():
-        data = plex.artwork(str(t["plex_key"] or ""), "poster", width, path=t["poster"])
+        # The item's own agent art, not an upload with ratings and badges drawn on (Kometa)
+        path = plex.clean_art_path(str(t["plex_key"] or ""), "poster") if t["plex_key"] else None
+        data = plex.artwork(str(t["plex_key"] or ""), "poster", width, path=path or t["poster"])
         if not data:
             raise NotFoundError("no poster")
         out.write_bytes(data)

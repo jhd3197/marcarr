@@ -98,9 +98,11 @@ class Pipeline:
             want = [s for s in STEPS if stmod.needs_run(info[s]["state"])]
         else:
             want = list(STEPS)
-        # steps that read a rerun step's output run again too
+        # steps that read a rerun step's output run again too, and so do the ones
+        # that never ran because it failed (STEPS is in dependency order)
         for s in STEPS:
-            if s not in want and any(d in want for d in stmod.DEPS[s]) and info[s]["state"] in ("done", "rerun"):
+            if (s not in want and any(d in want for d in stmod.DEPS[s])
+                    and info[s]["state"] in ("done", "rerun", "notrun", "failed")):
                 want.append(s)
         want = [s for s in STEPS if s in want]
         if not want:
@@ -131,8 +133,10 @@ class Pipeline:
         vid = job["payload"].get("video")
         if not vid:
             return
+        mine = set(job["payload"].get("steps") or STEPS)
         for s, r in self.store.step_rows(vid).items():
-            if r["state"] in ("queued", "run"):
+            # only this job's steps: another queued job of the same video keeps its own
+            if s in mine and r["state"] in ("queued", "run"):
                 back = "done" if r.get("finished_at") and r.get("seconds") is not None else "notrun"
                 detail = "Cancelled" if job["status"] == "cancelled" else (job.get("message") or "")
                 self.store.set_step(vid, s, state="failed" if job["status"] == "failed" and back == "notrun" else back,

@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Body
 from fastapi.responses import FileResponse, JSONResponse, Response
+from pydantic import BaseModel
 
 from .. import __version__
 from .. import config as cfgmod
@@ -71,7 +72,7 @@ def put_settings(body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B
     at_once_before = c.cfg.analysis.at_once
     c.save_config(cfgmod.merge_update(c.cfg, body))
     if c.cfg.analysis.at_once != at_once_before:
-        c.worker.heavy_threads = int(c.cfg.analysis.at_once)  # takes effect on restart
+        c.worker.set_heavy(int(c.cfg.analysis.at_once))
     return _settings_view()
 
 
@@ -98,6 +99,46 @@ def test_plex(body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B008
     except MarcarrError as exc:
         return {"ok": False, "name": "", "libraries": [], "error": str(exc)}
     return {"ok": True, "name": ident.get("friendlyName", ""), "libraries": libs}
+
+
+class _Reply(BaseModel):
+    answer: str
+
+
+@router.post("/settings/ai/test", dependencies=[UI])
+def test_ai() -> dict[str, Any]:
+    """One short question to the saved text model and one tiny picture to the vision
+    model. Costs a fraction of a cent; counted in this month's AI spending."""
+    import io
+    import time
+
+    from PIL import Image
+
+    from .. import ai
+
+    c = core()
+    if not c.cfg.ai.model.strip():
+        raise MarcarrError("Pick a text model first")
+
+    def check(images: list[bytes] | None) -> dict[str, Any]:
+        model = (c.cfg.ai.vision_model if images and c.cfg.ai.vision_model else c.cfg.ai.model)
+        t0 = time.monotonic()
+        with ai.metered() as m:
+            try:
+                prompt = ("What colour is this picture? One word." if images
+                          else "Reply with the word ok.")
+                ai.ask_json(c.cfg.ai, _Reply, "Answer in JSON.", prompt, images=images,
+                            retries=0, max_tokens=300)
+                ok, err = True, ""
+            except Exception as exc:  # noqa: BLE001 - shown to the person, not raised
+                ok, err = False, str(exc)[:300]
+        c.store.add_usage(None, "test", m.cost, m.tokens)
+        return {"ok": ok, "model": model, "seconds": round(time.monotonic() - t0, 2),
+                "cost": round(m.cost, 5), "error": err}
+
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 64), (220, 30, 30)).save(buf, "PNG")
+    return {"text": check(None), "vision": check([buf.getvalue()])}
 
 
 @router.get("/plex/libraries", dependencies=[UI])
@@ -148,11 +189,16 @@ def activity(filter: str = "all") -> dict[str, Any]:
     running = None
     left_videos = 0
     left_eta = 0.0
+    idle = 0
     for vid in c.store.current_videos():
         t = c.store.title_or_none(vid["title_id"])
         if t is None:
             continue
-        info = v.info(vid["id"], all_rows.get(vid["id"], {}))
+        rows_of = all_rows.get(vid["id"], {})
+        if not rows_of:
+            idle += 1  # never touched: counted, not listed (a library has thousands)
+            continue
+        info = v.info(vid["id"], rows_of)
         line = stmod.state_line(info)
         name = t["name"]
         if t["type"] == "episode" and t["parent_id"]:
@@ -165,7 +211,7 @@ def activity(filter: str = "all") -> dict[str, Any]:
             "seconds": round(sum(i["seconds"] or 0 for i in info.values()), 1),
             "ai_cost": round(sum(i["ai_cost"] or 0 for i in info.values()), 4), "state": line,
         })
-        todo = [s for s, i in info.items() if stmod.needs_run(i["state"]) or i["state"] in ("queued", "run")]
+        todo = [s for s, i in info.items() if i["state"] in ("queued", "run")]
         if todo:
             left_videos += 1
             left_eta += sum(avg.get(s, 0) * (1 - (info[s]["progress"] or 0)) for s in todo)
@@ -180,6 +226,7 @@ def activity(filter: str = "all") -> dict[str, Any]:
              "failed": lambda r: r["state"]["kind"] == "failed",
              "done": lambda r: r["state"]["kind"] == "done"}
     counts = {k: sum(1 for r in rows if f(r)) for k, f in kinds.items()}
+    counts["not_analysed"] = idle
     order = {"run": 0, "queued": 1, "failed": 2, "rerun": 3, "notrun": 4, "done": 5}
     rows.sort(key=lambda r: order.get(r["state"]["kind"], 9))
     shown = [r for r in rows if kinds.get(filter, kinds["all"])(r)]

@@ -11,6 +11,7 @@ import { useApp } from '../components/Shell';
 import { useApi } from '../lib/hooks';
 import { money, plural } from '../lib/format';
 import { useToast } from '../lib/toast';
+import AiTest from './settings/AiTest';
 import { Apps } from './settings/Apps';
 import { Places, type PlaceSources } from './settings/Places';
 import { Webhooks } from './settings/Webhooks';
@@ -228,6 +229,13 @@ export default function Settings() {
                   </Row>
                 );
               })}
+              <Row label="Read now">
+                <button type="button" className="btn sm" onClick={async () => {
+                  try { await api.scanLibrary(); toast('Reading the Plex libraries. New films show up in the Library as they come.'); }
+                  catch (e) { toast(e instanceof Error ? e.message : String(e), true); }
+                }}>Read the libraries now</button>
+                <span style={{ fontSize: 12.5, color: 'var(--dim)' }}>Files already read are skipped.</span>
+              </Row>
               {draft.plex.path_map.length ? (
                 <Row label="Paths" top>
                   <span style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -279,6 +287,7 @@ export default function Settings() {
                   <Row label="Vision model" htmlFor="s-vision"><input id="s-vision" type="text" className="sel mono" value={draft.ai.vision_model} placeholder="provider/model" onChange={(e) => set('ai', { vision_model: e.target.value })} style={{ width: 300 }} /></Row>
                   <Row label="Server address" htmlFor="s-base"><input id="s-base" type="url" className="inp mono" value={draft.ai.base_url} placeholder="Leave empty for the provider's own" onChange={(e) => set('ai', { base_url: e.target.value })} style={{ flex: '1 1 240px', width: 'auto' }} /></Row>
                   <Row label="API key"><Secret id="s-aikey" label="AI API key" value={draft.ai.api_key} reset={reset} onChange={(v) => set('ai', { api_key: v })} /></Row>
+                  <Row label="Check" top><AiTest dirty={dirty} /></Row>
                   <Row label="Monthly limit" htmlFor="s-limit">
                     <input key={'lim' + reset} id="s-limit" type="text" className="inp mono" defaultValue={money(draft.ai.monthly_limit)} style={{ width: 110 }}
                       onChange={(e) => { const n = parseMoney(e.target.value); if (n !== null) set('ai', { monthly_limit: n }); }}

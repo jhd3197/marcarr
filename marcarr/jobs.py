@@ -133,9 +133,15 @@ class JobStore:
     def next_queued(self, lane: str | None = None) -> dict[str, Any] | None:
         """The oldest queued job (in `lane`) whose "after" job, if any, has finished."""
         where, args = ("AND lane = ?", (lane,)) if lane else ("", ())
+        # Two jobs on one video never run together: the second may need the
+        # first's results (faces need scenes), and both write the same steps.
+        busy = {json.loads(r["payload"]).get("video") for r in self.db.query(
+            "SELECT payload FROM jobs WHERE status = 'running'")} - {None}
         for row in self.db.query(f"SELECT * FROM jobs WHERE status = 'queued' {where}"  # noqa: S608
                                  " ORDER BY created_at, rowid", args):
             job = self._row(row)
+            if job["payload"].get("video") in busy:
+                continue
             after = job["payload"].get("after") or []
             waiting = [a for a in ([after] if isinstance(after, str) else after)
                        if (dep := self.db.one("SELECT status FROM jobs WHERE id = ?", (a,)))
@@ -213,6 +219,19 @@ class Worker:
         fresh = self.submit(job["kind"], job["title"], job["payload"])
         self.store.delete(jid)
         return fresh
+
+    def set_heavy(self, n: int) -> None:
+        """Analyse up to *n* videos at once. More threads start now; with fewer, the
+        extra threads finish their job and wait (they stop picking on a restart)."""
+        n = max(1, n)
+        if self._threads and n > self.heavy_threads:
+            for i in range(self.heavy_threads, n):
+                t = threading.Thread(target=self._loop, args=("heavy",),
+                                     name=f"marcarr-worker-heavy-extra-{i}", daemon=True)
+                self._threads.append(t)
+                t.start()
+        self.heavy_threads = n
+        self._wakes["heavy"].set()
 
     def pause(self) -> None:
         self.paused.set()

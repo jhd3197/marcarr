@@ -295,3 +295,23 @@ def test_a_custom_tag_with_a_family_is_never_auto_accepted(core, analysed, monke
     status = {t["tag"]: t["status"] for t in core.store.tags(video=analysed)}
     assert status == {"red-scarf": "proposed", "snow": "accepted"}
 
+
+
+def test_one_job_per_video_at_a_time(core, analysed) -> None:
+    first = core.pipeline.submit(analysed, ["signals"])
+    core.jobs.update(first["job"], status="running")
+    core.pipeline.submit(analysed, ["cast"])
+    assert core.jobs.next_queued("heavy") is None  # waits for the running one
+    core.jobs.update(first["job"], status="done")
+    assert core.jobs.next_queued("heavy") is not None
+
+
+def test_a_finished_job_leaves_other_jobs_steps_queued(core, analysed) -> None:
+    first = core.pipeline.submit(analysed, ["signals"])
+    core.pipeline.submit(analysed, ["cast"])
+    job = core.jobs.get(first["job"])
+    core.jobs.update(job["id"], status="cancelled")
+    core.pipeline.finished(core.jobs.get(job["id"]))
+    rows = core.store.step_rows(analysed)
+    assert rows["cast"]["state"] == "queued"
+    assert rows["signals"]["state"] == "done"
