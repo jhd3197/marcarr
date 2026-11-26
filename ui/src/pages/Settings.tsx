@@ -106,11 +106,14 @@ export default function Settings() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
+  // Hooks stay above the early returns: a render that returns early must call the
+  // same hooks as the one after it (React error #310 otherwise).
+  const models = useModels(!!draft?.ai.enabled);
+  const [extraKeys, setExtraKeys] = useState<string[]>([]);
+
   if (loaded.error && !draft) return <div className="pg-settings" style={{ display: 'contents' }}><h1 className="h1">Settings</h1><ErrorBox error={loaded.error} retry={loaded.reload} /></div>;
   if (!draft || !saved) return <div className="pg-settings" style={{ display: 'contents' }}><h1 className="h1">Settings</h1><Loading /></div>;
 
-  const models = useModels(!!draft?.ai.enabled);
-  const [extraKeys, setExtraKeys] = useState<string[]>([]);
   // a key row for every provider with a key, the chosen models' providers, and ones added now
   const keyRows = draft ? Array.from(new Set([
     ...Object.keys(draft.ai.keys || {}),
@@ -327,6 +330,10 @@ export default function Settings() {
                       onBlur={(e) => { e.target.value = money(draft.ai.monthly_limit); }} />
                     <span className="mono" style={{ fontSize: 12.5, color: 'var(--dim)' }}>{money(status?.ai.month_cost)} used this month</span>
                     <Link to="/activity" style={{ fontSize: 12.5 }}>Activity</Link>
+                  </Row>
+                  <Row label="Look up cuts">
+                    <Switch on={draft.research.enabled} label="Look up a film's cuts online" onChange={(v) => set('research', { enabled: v })} />
+                    <span>Find what an Extended or Director's Cut adds by searching the web. Sends the film's name and year; about {money(draft.research.max_cost)} at most per film.</span>
                   </Row>
                 </>
               ) : (

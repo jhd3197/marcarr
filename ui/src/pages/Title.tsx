@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { api, urls } from '../api/client';
-import { STEPS, type Person, type Scene, type Title, type Video } from '../api/types';
+import { STEPS, type Person, type Scene, type Title, type TitleCuts, type Video } from '../api/types';
 import { Avatar, Chips, css, DOT, ErrorBox, Loading, Pills, Seg } from '../components/kit';
 import { hms, length, money, plural, took } from '../lib/format';
 import { useApi } from '../lib/hooks';
@@ -78,6 +78,10 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
   const scenes = useMemo<Scene[]>(() => [...(scenesRes.data?.items || [])].sort((a, b) => a.start - b.start), [scenesRes.data]);
   const signals = signalsRes.data?.items || [];
   const cast = useMemo(() => new Map<string, Person>(title.cast.map((p) => [p.id, p])), [title.cast]);
+  const cutsRes = useApi(() => api.cuts(title.id).catch(() => null), [title.id]);
+  const cutsHere = useMemo(() => (cutsRes.data?.ranges || [])
+    .filter((r) => r.video_id === video?.id && r.start != null && r.end != null && r.status !== 'rejected')
+    .map((r) => ({ start: r.start as number, end: r.end as number, status: r.status, edition: r.edition })), [cutsRes.data, video?.id]);
   // Through this scene: the story stops here for the cast, places, tags and graph.
   const through = parseThrough(params.get('through'), scenes.length);
   const [draft, setDraft] = useState<number | null>(through);
@@ -191,6 +195,7 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
           <CrumbLinks items={[{ name: 'Library', to: '/' }, ...(title.parent ? [{ name: title.parent.name, to: titleHref(title.parent.id) }] : []), { name: title.name }]} />
           <h1 className="h1">{title.name}</h1>
           <div className="mono" style={css('font-size: 12px; color: var(--dim)')}>{meta}</div>
+          {cutsRes.data ? <CutsLine title={title.id} cuts={cutsRes.data} /> : null}
           <div style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; font-size: 13px')}>
             <span style={css('display: inline-flex; align-items: center; gap: 7px; font-weight: 600')}><span style={css('width:8px;height:8px;border-radius:50%;background:' + status.dot)} />{status.text}</span>
             {video && video.seconds_spent > 0 ? <Link to="/activity" className="mono" style={{ fontSize: 12 }}>took {took(video.seconds_spent)} · AI cost {money(video.ai_cost)}</Link> : null}
@@ -279,7 +284,7 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
               onSeek={(t) => { seek(t); playhead.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />
           ) : duration > 0 ? (
             <Timeline duration={duration} scenes={shownScenes} cutoff={cutoffTime(scenes, through)} signals={signals} cast={cast} tagsStep={video.steps.tags} facesStep={video.steps.faces}
-              selected={selN} at={at} episode={title.type === 'episode'} onSeek={seek} />
+              selected={selN} at={at} episode={title.type === 'episode'} onSeek={seek} cuts={cutsHere} />
           ) : null}
 
           <section aria-label="Scenes">
@@ -317,6 +322,22 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
         </>
       )}
     </div>
+  );
+}
+
+/** "2 versions: Extended, Theatrical · 3 differences, 1 to review", linking to the cuts page. */
+function CutsLine({ title, cuts }: { title: string; cuts: TitleCuts }) {
+  const present = cuts.versions.filter((v) => v.in_plex);
+  const live = cuts.ranges.filter((r) => r.status !== 'rejected');
+  const waiting = live.filter((r) => r.status === 'proposed').length;
+  const parts = [
+    present.length > 1 ? `${present.length} versions: ${present.map((v) => v.edition || 'unnamed').join(', ')}` : '',
+    live.length ? `${plural(live.length, 'difference')} between cuts${waiting ? `, ${waiting} to review` : ''}` : '',
+  ].filter(Boolean);
+  return (
+    <Link to={`${titleHref(title)}/cuts`} style={css('font-size: 13px; align-self: flex-start')}>
+      {parts.length ? parts.join(' · ') : 'Versions and cuts'}
+    </Link>
   );
 }
 

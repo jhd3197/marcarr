@@ -76,7 +76,36 @@ second of the video that shows it, so a reviewer can jump straight there.
 The source is the key's app name (`doblarr`). Kept and dropped tags fire
 `tag.kept` / `tag.dropped`.
 
-## 6. Report who speaks or is named
+## 6. Versions and cuts
+
+A Plex item can hold several files: an Extended and a Theatrical, or two
+encodes of one cut. Each is a video of the title; the first is the one the
+library analyses, the others are listed and analysed when asked.
+
+```
+GET  /api/v1/titles/{id}/cuts           versions, differences, last comparison
+POST /api/v1/titles/{id}/cuts           {"edition": "Extended", "base": "Theatrical",
+                                         "kind": "added", "video": "5cc97989",
+                                         "start": 3730, "end": 3795, "note": "..."}
+POST /api/v1/titles/{id}/cuts/compare   line two local versions up (no AI)
+POST /api/v1/titles/{id}/cuts/research  look the cuts up online (Settings > AI)
+PATCH /api/v1/cuts/{id}                 {"status": "accepted" | "rejected"}
+GET  /api/v1/videos/{a}/to/{b}?t=4120   a time on version a, on version b
+```
+
+A difference is footage one cut has and another lacks: `added` (a scene only in
+that cut), `longer` (a scene that runs longer) or `removed`. Comparing two
+local versions lines up the rhythm of their camera cuts, so it works across
+languages, encodes and a PAL speed-up, and gives exact edges. Looking it up
+online gives rough, published times with their sources (`rough: true`).
+Both are proposals a person keeps or drops. An app's marks are proposals too.
+
+**FansCut**: a cut made on the Extended keeps its times there; to play it on
+someone's Theatrical, `GET /videos/{ext}/to/{th}?t=` moves each boundary, and
+`at: null` means the moment is Extended-only (skip it, or warn). FansCut's own
+anchors still do the final sync on the other person's file.
+
+## 7. Report who speaks or is named
 
 ```
 POST /api/v1/videos/{id}/presence

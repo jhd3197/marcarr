@@ -87,6 +87,14 @@ class AICfg(BaseModel):
     auto_accept: float = Field(default=1.0, ge=0, le=1)  # AI tags this sure are kept at once
 
 
+class ResearchCfg(BaseModel):
+    # Look a film's cuts up online (what an Extended adds): sends the film's name and
+    # year to web search and to the AI model. Off until switched on.
+    enabled: bool = False
+    depth: Literal["quick", "standard", "deep"] = "quick"
+    max_cost: float = Field(default=0.25, ge=0.01, le=5.0)  # dollars per run
+
+
 class TagsCfg(BaseModel):
     families_off: list[str] = Field(default_factory=list)
     search_closely: list[str] = Field(default_factory=lambda: ["christmas", "halloween"])
@@ -142,6 +150,7 @@ class Config(BaseModel):
     plex: PlexCfg = Field(default_factory=PlexCfg)
     labels: LabelsCfg = Field(default_factory=LabelsCfg)
     ai: AICfg = Field(default_factory=AICfg)
+    research: ResearchCfg = Field(default_factory=ResearchCfg)
     tags: TagsCfg = Field(default_factory=TagsCfg)
     faces: FacesCfg = Field(default_factory=FacesCfg)
     general: GeneralCfg = Field(default_factory=GeneralCfg)

@@ -87,11 +87,20 @@ def video_id(content_key: str) -> str:
     return content_key.lstrip("c")[:8]
 
 
+EDITION_TAG = re.compile(r"\{edition-([^}]+)\}", re.IGNORECASE)
+
+
 def edition_of(path: str, plex_edition: str = "") -> str:
+    """The cut a file is: Plex's edition title, Plex's {edition-...} file name tag, or
+    the words of the file name (Extended, Director's Cut...). Empty when none says."""
     if plex_edition:
         return plex_edition
-    m = EDITION_WORDS.search(Path(path).stem)
-    return m.group(1).title() if m else ""
+    stem = Path(path).stem
+    tag = EDITION_TAG.search(stem)
+    if tag:
+        return " ".join(tag.group(1).split())
+    m = EDITION_WORDS.search(stem.replace(".", " ").replace("_", " "))
+    return m.group(1).title().replace("Directors", "Director's").replace("Director'S", "Director's") if m else ""
 
 
 def _guids(item: dict[str, Any]) -> dict[str, str]:

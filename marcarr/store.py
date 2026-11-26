@@ -17,6 +17,7 @@ from .stages import vocab
 
 STEPS = ("shots", "subtitles", "scenes", "signals", "cast", "faces", "tags")
 STATUSES = ("proposed", "accepted", "rejected")
+CUT_KINDS = ("added", "longer", "removed")
 PRESENCE = ("seen", "mentioned", "speaker")  # how a character is in a scene
 MAX_SUMMARY = 500
 MAX_CUES = 12  # per kind, on a custom tag
@@ -150,15 +151,19 @@ class Store:
                           (path, size, mtime))
         return dict(row) if row else None
 
-    def upsert_video(self, title_id: str, path: str, ident: dict[str, Any], edition: str) -> str:
+    def upsert_video(self, title_id: str, path: str, ident: dict[str, Any], edition: str,
+                     *, main: bool = True) -> str:
+        """Add or update a video. *main*: it becomes the title's current video and the
+        title's other videos stop being current; another version leaves them alone."""
         from .identity import video_id
 
         stamp = now()
         key = ident["content_key"]
         row = self.db.one("SELECT id, title_id FROM videos WHERE content_key = ?", (key,))
         with self.db.transaction():
-            self.db.execute("UPDATE videos SET current = 0 WHERE title_id = ? AND content_key != ?",
-                            (title_id, key))
+            if main:
+                self.db.execute("UPDATE videos SET current = 0 WHERE title_id = ? AND content_key != ?",
+                                (title_id, key))
             if row is None:
                 vid = video_id(key)
                 while self.db.one("SELECT 1 FROM videos WHERE id = ?", (vid,)):
@@ -166,22 +171,32 @@ class Store:
                 self.db.execute(
                     "INSERT INTO videos (id, content_key, title_id, path, edition, size, duration,"
                     " width, height, streams, mtime, current, first_seen, last_seen)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (vid, key, title_id, path, edition, ident.get("size"), ident.get("duration"),
                      ident.get("width"), ident.get("height"), dumps(ident.get("streams") or []),
-                     ident.get("mtime"), stamp, stamp))
+                     ident.get("mtime"), 1 if main else 0, stamp, stamp))
                 return vid
             self.db.execute(
-                "UPDATE videos SET title_id = ?, path = ?, mtime = ?, current = 1, last_seen = ?"
-                " WHERE id = ?", (title_id, path, ident.get("mtime"), stamp, row["id"]))
+                "UPDATE videos SET title_id = ?, path = ?, mtime = ?, last_seen = ?, in_plex = 1,"
+                " edition = CASE WHEN ? != '' THEN ? ELSE edition END"
+                + (", current = 1" if main else "") + " WHERE id = ?",
+                (title_id, path, ident.get("mtime"), stamp, edition, edition, row["id"]))
             return str(row["id"])
 
-    def touch_video(self, vid: str, title_id: str) -> None:
+    def touch_video(self, vid: str, title_id: str, *, main: bool = True) -> None:
         with self.db.transaction():
-            self.db.execute("UPDATE videos SET current = 0 WHERE title_id = ? AND id != ?",
-                            (title_id, vid))
-            self.db.execute("UPDATE videos SET current = 1, title_id = ?, last_seen = ? WHERE id = ?",
+            if main:
+                self.db.execute("UPDATE videos SET current = 0 WHERE title_id = ? AND id != ?",
+                                (title_id, vid))
+            self.db.execute("UPDATE videos SET title_id = ?, last_seen = ?, in_plex = 1"
+                            + (", current = 1" if main else "") + " WHERE id = ?",
                             (title_id, now(), vid))
+
+    def set_present(self, title_id: str, ids: list[str]) -> None:
+        """The title's videos Plex lists now are *ids*; the others are marked gone."""
+        marks = ",".join("?" * len(ids))
+        self.db.execute(f"UPDATE videos SET in_plex = CASE WHEN id IN ({marks}) THEN 1 ELSE 0 END"
+                        " WHERE title_id = ?", (*ids, title_id))
 
     def video(self, vid: str) -> dict[str, Any]:
         row = self.db.one("SELECT * FROM videos WHERE id = ?", (vid,))
@@ -822,3 +837,125 @@ class Store:
         r = self.db.one("SELECT COALESCE(SUM(seconds), 0) AS s FROM steps WHERE finished_at >= ?",
                         (month_start(),))
         return float(r["s"]) if r else 0.0
+
+    # -- cuts: footage one cut has and another lacks ----------------------------------------
+    @staticmethod
+    def _cut(r: Any) -> dict[str, Any]:
+        d = dict(r)
+        d["evidence"] = json.loads(d["evidence"] or "[]")
+        return d
+
+    def add_cut_range(self, title_id: str, *, edition: str, base: str = "", kind: str = "added",
+                      video_id: str | None = None, start: float | None = None,
+                      end: float | None = None, extra: float | None = None,
+                      status: str = "proposed", source: str = "person",
+                      confidence: float | None = None, note: str = "",
+                      evidence: list[str] | None = None) -> dict[str, Any]:
+        if status not in STATUSES:
+            raise MarcarrError(f"status must be one of {', '.join(STATUSES)}")
+        if kind not in CUT_KINDS:
+            raise MarcarrError(f"kind must be one of {', '.join(CUT_KINDS)}")
+        edition = " ".join(str(edition or "").split())[:60]
+        if not edition:
+            raise MarcarrError("name the cut that has this footage (Extended, Director's Cut...)")
+        if start is not None and end is not None:
+            start, end = clean_range(start, end)
+        cid = "cut_" + uuid.uuid4().hex[:10]
+        stamp = now()
+        self.db.execute(
+            "INSERT INTO cut_ranges (id, title_id, edition, base, kind, video_id, start, end, extra,"
+            " status, source, confidence, note, evidence, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (cid, title_id, edition, " ".join(str(base or "").split())[:60], kind, video_id,
+             start, end, None if extra is None else round(float(extra), 2), status, source[:80],
+             confidence, (note or "")[:400], dumps([str(x)[:300] for x in evidence or []][:12]),
+             stamp, stamp))
+        return self.cut_range(cid)
+
+    def cut_range(self, cid: str) -> dict[str, Any]:
+        r = self.db.one("SELECT * FROM cut_ranges WHERE id = ?", (cid,))
+        if r is None:
+            raise NotFoundError(f"cut range {cid} not found")
+        return self._cut(r)
+
+    def cut_ranges(self, title_id: str, *, status: str | None = None) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM cut_ranges WHERE title_id = ?"
+        args: list[Any] = [title_id]
+        if status:
+            sql += " AND status = ?"
+            args.append(status)
+        return [self._cut(r) for r in self.db.query(
+            sql + " ORDER BY start IS NULL, start, created_at", tuple(args))]
+
+    def update_cut_range(self, cid: str, **fields: Any) -> dict[str, Any]:
+        cur = self.cut_range(cid)
+        allowed = {"status", "start", "end", "note", "edition", "base", "kind", "video_id", "extra"}
+        bad = set(fields) - allowed
+        if bad:
+            raise MarcarrError(f"cannot change {', '.join(sorted(bad))}")
+        if "status" in fields and fields["status"] not in STATUSES:
+            raise MarcarrError(f"status must be one of {', '.join(STATUSES)}")
+        if "kind" in fields and fields["kind"] not in CUT_KINDS:
+            raise MarcarrError(f"kind must be one of {', '.join(CUT_KINDS)}")
+        if "start" in fields or "end" in fields:
+            a = fields.get("start", cur["start"])
+            b = fields.get("end", cur["end"])
+            if a is not None and b is not None:
+                fields["start"], fields["end"] = clean_range(a, b)
+        if not fields:
+            return cur
+        sets = ", ".join(f"{k} = ?" for k in fields)
+        self.db.execute(f"UPDATE cut_ranges SET {sets}, updated_at = ? WHERE id = ?",
+                        (*fields.values(), now(), cid))
+        return self.cut_range(cid)
+
+    def delete_cut_range(self, cid: str) -> None:
+        self.cut_range(cid)
+        self.db.execute("DELETE FROM cut_ranges WHERE id = ?", (cid,))
+
+    def drop_cut_proposals(self, title_id: str, source_prefix: str) -> int:
+        """Remove the still-proposed ranges one source made, before it runs again."""
+        where = "title_id = ? AND status = 'proposed' AND source LIKE ?"
+        args = (title_id, source_prefix + "%")
+        n = self.db.one(f"SELECT COUNT(*) AS n FROM cut_ranges WHERE {where}", args)
+        self.db.execute(f"DELETE FROM cut_ranges WHERE {where}", args)
+        return int(n["n"]) if n else 0
+
+    def save_cut_map(self, base_id: str, other_id: str, doc: dict[str, Any]) -> None:
+        self.db.execute("INSERT INTO cut_maps (base_id, other_id, doc, updated_at) VALUES (?,?,?,?)"
+                        " ON CONFLICT (base_id, other_id) DO UPDATE SET doc = excluded.doc,"
+                        " updated_at = excluded.updated_at", (base_id, other_id, dumps(doc), now()))
+
+    def cut_map(self, base_id: str, other_id: str) -> dict[str, Any] | None:
+        r = self.db.one("SELECT doc FROM cut_maps WHERE base_id = ? AND other_id = ?",
+                        (base_id, other_id))
+        return json.loads(r["doc"]) if r else None
+
+    def add_research_run(self, title_id: str, topic: str, question: str, *, model: str,
+                         answer: str, sources: list[dict[str, Any]], result: dict[str, Any],
+                         cost: float) -> dict[str, Any]:
+        rid = "rr_" + uuid.uuid4().hex[:10]
+        self.db.execute(
+            "INSERT INTO research_runs (id, title_id, topic, question, model, answer, sources,"
+            " result, cost, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (rid, title_id, topic, question, model, answer, dumps(sources), dumps(result),
+             float(cost or 0.0), now()))
+        return self.research_run(rid)
+
+    def research_run(self, rid: str) -> dict[str, Any]:
+        r = self.db.one("SELECT * FROM research_runs WHERE id = ?", (rid,))
+        if r is None:
+            raise NotFoundError(f"research run {rid} not found")
+        d = dict(r)
+        d["sources"] = json.loads(d["sources"] or "[]")
+        d["result"] = json.loads(d["result"] or "{}")
+        return d
+
+    def research_runs(self, title_id: str, topic: str | None = None) -> list[dict[str, Any]]:
+        sql = "SELECT id FROM research_runs WHERE title_id = ?"
+        args: list[Any] = [title_id]
+        if topic:
+            sql += " AND topic = ?"
+            args.append(topic)
+        return [self.research_run(r["id"]) for r in self.db.query(
+            sql + " ORDER BY created_at DESC", tuple(args))]
