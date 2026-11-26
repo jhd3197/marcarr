@@ -117,9 +117,11 @@ def poster(tid: str, width: int = 300) -> Response:
     if not t["poster"] or plex is None:
         raise NotFoundError("no poster")
     width = max(80, min(int(width), 800))
-    out = cache_path("posters", tid, t["poster"], width)
+    out = cache_path("posters", "clean", tid, t["poster"], width)
     if not out.is_file():
-        data = plex.artwork(str(t["plex_key"] or ""), "poster", width, path=t["poster"])
+        # The item's own agent art, not an upload with ratings and badges drawn on (Kometa)
+        path = plex.clean_art_path(str(t["plex_key"] or ""), "poster") if t["plex_key"] else None
+        data = plex.artwork(str(t["plex_key"] or ""), "poster", width, path=path or t["poster"])
         if not data:
             raise NotFoundError("no poster")
         out.write_bytes(data)

@@ -25,10 +25,10 @@ function meta(t: TitleSummary): string {
 }
 
 function posterStyle(t: TitleSummary): string {
-  return 'background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(0,0,0,.88))'
-    + (t.poster ? `,url("${t.poster}") center/cover` : '')
+  // The fade is for the name drawn on a poster-less tile; real posters carry their own title.
+  return (t.poster ? `background:url("${t.poster}") center/cover` : 'background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(0,0,0,.88))')
     + `,color-mix(in srgb,${posterColour(t.id)} 55%,#171b20)`
-    + (t.state.kind === 'notrun' ? ';filter:saturate(.35)' : '');
+    + (t.state.kind === 'notrun' ? ';filter:saturate(.6)' : '');
 }
 
 export default function Library() {
@@ -36,8 +36,8 @@ export default function Library() {
   const filter = params.get('f') || 'all';
   const [view, setViewState] = useState<View>(() => (localStorage.getItem('marcarr.libraryView') as View) || 'grid');
   const setView = (v: View) => { localStorage.setItem('marcarr.libraryView', v); setViewState(v); };
-  const [typed, setTyped] = useState('');
-  const [q, setQ] = useState('');
+  const [typed, setTyped] = useState(() => params.get('q') || '');
+  const [q, setQ] = useState(() => params.get('q') || '');
   const [pages, setPages] = useState(1);
   const [running, setRunning] = useState(false);
   const toast = useToast();
@@ -95,7 +95,7 @@ export default function Library() {
             <Link key={t.id} to={titleHref(t.id)} className="pc">
               <span className="po" style={css(posterStyle(t))}>
                 {t.to_review > 0 ? <span className="flag" aria-label={`${t.to_review} tags to review`}>{t.to_review}</span> : null}
-                <span className="hd" style={css('position: absolute; left: 12px; right: 12px; bottom: 12px; font-size: 17px; font-weight: 700; line-height: 1.15; color: #ffffff; text-wrap: balance')}>{t.name}</span>
+                {t.poster ? null : <span className="hd" style={css('position: absolute; left: 12px; right: 12px; bottom: 12px; font-size: 17px; font-weight: 700; line-height: 1.15; color: #ffffff; text-wrap: balance')}>{t.name}</span>}
                 {t.state.kind === 'run' ? (
                   <span style={css('position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,.25)')}>
                     <span style={css(`display:block;height:100%;width:${Math.round((t.state.progress ?? 0) * 100)}%;background:#f5d547`)} />

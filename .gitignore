@@ -16,3 +16,4 @@ ui/dist/
 !.env.example
 config.yaml
 graphify-out/
+*.log

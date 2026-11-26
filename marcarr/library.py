@@ -29,6 +29,14 @@ def sort_name(name: str) -> str:
     return ARTICLES.sub("", name or "").lower()
 
 
+def plex_sort(item: dict[str, Any]) -> str:
+    """Plex's sort title, unless a tool rewrote it to pin items ("!01 the odyssey")."""
+    ts = str(item.get("titleSort") or "")
+    if not ts or not ts[:1].isalnum():
+        ts = str(item.get("title") or "")
+    return sort_name(ts)
+
+
 def first_file(item: dict[str, Any]) -> tuple[str, str]:
     """(file path, edition) of a Plex item's first media part."""
     for media in item.get("Media") or []:
@@ -118,7 +126,7 @@ class Library:
     def _base(self, item: dict[str, Any], tid: str, ids: dict[str, Any], section: str) -> dict[str, Any]:
         dur = item.get("duration")
         return {
-            "id": tid, "name": item.get("title") or "", "sort_name": sort_name(item.get("titleSort") or item.get("title") or ""),
+            "id": tid, "name": item.get("title") or "", "sort_name": plex_sort(item),
             "year": item.get("year"), "plex_key": str(item.get("ratingKey") or "") or None,
             "plex_section": section, "summary": item.get("summary") or "",
             "poster": item.get("thumb") or "", "duration": round(dur / 1000, 3) if dur else None,

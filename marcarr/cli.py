@@ -66,10 +66,18 @@ def main(argv: list[str] | None = None) -> int:
 
         if not cfg_path.is_file():
             cfgmod.save(cfg, cfg_path)
-        core = Core(cfg, cfg_path)
-        app = create_app(core)
         host = args.host or cfg.server.host
         port = args.port or cfg.server.port
+        import socket
+
+        with socket.socket() as probe:  # a second copy must not touch the queue
+            try:
+                probe.bind((host, port))
+            except OSError:
+                print(f"Port {port} is in use: is Marcarr already running?", file=sys.stderr)
+                return 1
+        core = Core(cfg, cfg_path, start_worker=False)
+        app = create_app(core, start_worker=True)
         logging.getLogger("marcarr").info("Marcarr %s on http://%s:%s", __version__, host, port)
         uvicorn.run(app, host=host, port=port, log_level="warning")
         return 0

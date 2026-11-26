@@ -138,7 +138,10 @@ export default function Activity() {
         </div>
       </div>
 
-      <Pills value={filter} onChange={(f) => { setFilter(f); setOpen(''); }} options={FILTERS.map(([key, name]) => ({ key, name, n: counts[key] ?? (key === 'failed' ? counts.look : undefined) ?? 0 }))} />
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <Pills value={filter} onChange={(f) => { setFilter(f); setOpen(''); }} options={FILTERS.map(([key, name]) => ({ key, name, n: counts[key] ?? (key === 'failed' ? counts.look : undefined) ?? 0 }))} />
+        {counts.not_analysed ? <span style={{ fontSize: 12.5, color: 'var(--dim)' }}>{plural(counts.not_analysed, 'more video')} not analysed yet: start one from its page in the <Link to="/">Library</Link>.</span> : null}
+      </div>
 
       <div className="box" style={{ padding: '14px 10px 4px', overflowX: 'auto' }}>
         <div style={{ minWidth: 1100 }}>

@@ -20,11 +20,15 @@ UI_DIST = Path(__file__).resolve().parent.parent / "ui" / "dist"
 PACKAGED_UI = Path(__file__).resolve().parent / "ui"
 
 
-def create_app(core: Core) -> FastAPI:
+def create_app(core: Core, *, start_worker: bool = False) -> FastAPI:
     common.set_core(core)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> Any:
+        # Workers start once the server is up: a server that cannot bind its
+        # port must not pick up (and then abandon) queued analysis.
+        if start_worker and not core.worker.alive():
+            core.worker.start()
         yield
         core.close()
 

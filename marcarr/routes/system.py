@@ -148,11 +148,16 @@ def activity(filter: str = "all") -> dict[str, Any]:
     running = None
     left_videos = 0
     left_eta = 0.0
+    idle = 0
     for vid in c.store.current_videos():
         t = c.store.title_or_none(vid["title_id"])
         if t is None:
             continue
-        info = v.info(vid["id"], all_rows.get(vid["id"], {}))
+        rows_of = all_rows.get(vid["id"], {})
+        if not rows_of:
+            idle += 1  # never touched: counted, not listed (a library has thousands)
+            continue
+        info = v.info(vid["id"], rows_of)
         line = stmod.state_line(info)
         name = t["name"]
         if t["type"] == "episode" and t["parent_id"]:
@@ -165,7 +170,7 @@ def activity(filter: str = "all") -> dict[str, Any]:
             "seconds": round(sum(i["seconds"] or 0 for i in info.values()), 1),
             "ai_cost": round(sum(i["ai_cost"] or 0 for i in info.values()), 4), "state": line,
         })
-        todo = [s for s, i in info.items() if stmod.needs_run(i["state"]) or i["state"] in ("queued", "run")]
+        todo = [s for s, i in info.items() if i["state"] in ("queued", "run")]
         if todo:
             left_videos += 1
             left_eta += sum(avg.get(s, 0) * (1 - (info[s]["progress"] or 0)) for s in todo)
@@ -180,6 +185,7 @@ def activity(filter: str = "all") -> dict[str, Any]:
              "failed": lambda r: r["state"]["kind"] == "failed",
              "done": lambda r: r["state"]["kind"] == "done"}
     counts = {k: sum(1 for r in rows if f(r)) for k, f in kinds.items()}
+    counts["not_analysed"] = idle
     order = {"run": 0, "queued": 1, "failed": 2, "rerun": 3, "notrun": 4, "done": 5}
     rows.sort(key=lambda r: order.get(r["state"]["kind"], 9))
     shown = [r for r in rows if kinds.get(filter, kinds["all"])(r)]

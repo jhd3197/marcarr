@@ -228,6 +228,13 @@ export default function Settings() {
                   </Row>
                 );
               })}
+              <Row label="Read now">
+                <button type="button" className="btn sm" onClick={async () => {
+                  try { await api.scanLibrary(); toast('Reading the Plex libraries. New films show up in the Library as they come.'); }
+                  catch (e) { toast(e instanceof Error ? e.message : String(e), true); }
+                }}>Read the libraries now</button>
+                <span style={{ fontSize: 12.5, color: 'var(--dim)' }}>Files already read are skipped.</span>
+              </Row>
               {draft.plex.path_map.length ? (
                 <Row label="Paths" top>
                   <span style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

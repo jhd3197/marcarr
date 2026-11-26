@@ -98,9 +98,11 @@ class Pipeline:
             want = [s for s in STEPS if stmod.needs_run(info[s]["state"])]
         else:
             want = list(STEPS)
-        # steps that read a rerun step's output run again too
+        # steps that read a rerun step's output run again too, and so do the ones
+        # that never ran because it failed (STEPS is in dependency order)
         for s in STEPS:
-            if s not in want and any(d in want for d in stmod.DEPS[s]) and info[s]["state"] in ("done", "rerun"):
+            if (s not in want and any(d in want for d in stmod.DEPS[s])
+                    and info[s]["state"] in ("done", "rerun", "notrun", "failed")):
                 want.append(s)
         want = [s for s in STEPS if s in want]
         if not want:
