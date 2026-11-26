@@ -6,7 +6,7 @@ import { api } from '../api/client';
 import type { ReviewItem, TagStatus } from '../api/types';
 import { css, ErrorBox, Loading, Seg } from '../components/kit';
 import { useApp } from '../components/Shell';
-import { hms } from '../lib/format';
+import { evText, hms } from '../lib/format';
 import { useApi, useKeys } from '../lib/hooks';
 import { useToast } from '../lib/toast';
 import { bgUrl, chipCss, errText, FAMILIES, familyName, sourceName } from './review/labels';
@@ -142,8 +142,8 @@ export default function Review() {
                     </div>
                     {rows.map((it) => {
                       const st = stateOf(it);
-                      const heard = it.evidence?.heard || [];
-                      const seen = it.evidence?.seen || [];
+                      const heard = (it.evidence?.heard || []).map(evText);
+                      const seen = (it.evidence?.seen || []).map(evText);
                       const why = heard.length ? 'heard: ' + heard.join(', ') : seen.length ? 'seen: ' + seen.join(', ') : '';
                       return (
                         <button key={it.id} type="button" className="qr" aria-current={it.id === cur.id ? 'true' : undefined} onClick={() => setCurId(it.id)}
@@ -185,8 +185,8 @@ export default function Review() {
                   {familyName(cur.family)} · proposed by {sourceName(cur.source)}{cur.confidence != null ? ` · ${cur.confidence.toFixed(2)}` : ''}
                 </span>
               </div>
-              {cur.evidence?.heard?.length ? <div className="ev"><b>Heard</b>{cur.evidence.heard.join(', ')}</div> : null}
-              {cur.evidence?.seen?.length ? <div className="ev"><b>Seen</b>{cur.evidence.seen.join(', ')}</div> : null}
+              {cur.evidence?.heard?.length ? <div className="ev"><b>Heard</b>{cur.evidence.heard.map(evText).join(', ')}</div> : null}
+              {cur.evidence?.seen?.length ? <div className="ev"><b>Seen</b>{cur.evidence.seen.map(evText).join(', ')}</div> : null}
               <div style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 4px')}>
                 <button type="button" className="btn pri" onClick={() => decide('keep')}>Keep <span className="key">K</span></button>
                 <button type="button" className="btn" onClick={() => decide('drop')}>Drop <span className="key">D</span></button>

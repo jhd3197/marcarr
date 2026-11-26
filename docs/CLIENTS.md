@@ -39,6 +39,9 @@ Cache by video id.
 | Camera cuts | `GET /videos/{id}/shots?from=&to=` |
 | Subtitle lines | `GET /videos/{id}/lines?from=&to=` |
 | Scenes with tags, people, place | `GET /videos/{id}/scenes?from=&to=&tag=` |
+| Who is seen, heard or named | `GET /videos/{id}/presence?person=&from=&to=` |
+| Who is seen with whom | `GET /titles/{id}/graph?video=&through=` |
+| A scene as text to paste | `GET /videos/{id}/scenes/{n}/brief?link=` |
 | Measured signals | `GET /videos/{id}/signals?signal=dark` |
 | Faces | `GET /videos/{id}/faces?person=&confirmed=true` |
 | What is on screen at t | `GET /videos/{id}/at/{seconds}` |
@@ -62,12 +65,28 @@ for `step.finished` / `video.analysed`. Each call is signed:
 ```
 POST /api/v1/videos/{id}/tags
 {"tag": "Rain", "start": 5332.0, "end": 5390.0,
- "evidence": {"heard": ["rain"], "seen": ["rain on the window"]},
- "people": ["ron-weasley"]}
+ "evidence": {"heard": [{"text": "rain", "at": 5340.2}], "seen": ["rain on the window"]},
+ "people": ["ron-weasley"], "mentioned": ["hermione-granger"]}
 ```
+
+`people` are the characters seen on screen; `mentioned` the ones only named in
+the dialogue. An evidence item is a short text, or `{"text", "at"}` with the
+second of the video that shows it, so a reviewer can jump straight there.
 
 The source is the key's app name (`doblarr`). Kept and dropped tags fire
 `tag.kept` / `tag.dropped`.
+
+## 6. Report who speaks or is named
+
+```
+POST /api/v1/videos/{id}/presence
+{"person": "ron-weasley", "how": "speaker", "start": 5340.0, "end": 5344.5, "at": 5341.0}
+```
+
+`how` is `seen`, `mentioned` or `speaker`. A scene then lists the person under
+`seen`, `speakers` (heard but not seen) or `mentioned` (only named); `people`
+stays the list of those seen. A person keeps or drops it with
+`POST /presence/{id}/keep|drop`.
 
 ## Moving each app, step by step
 

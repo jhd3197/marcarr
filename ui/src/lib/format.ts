@@ -32,3 +32,8 @@ export const when = (iso: string | null | undefined) => {
 };
 export const initials = (name: string) =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w.charAt(0).toUpperCase()).join('');
+
+/** A piece of tag evidence as text: "snow" or { text: "snow", at: 12 } -> "snow". */
+export const evText = (x: string | { text: string; at: number | null }) => (typeof x === 'string' ? x : x.text);
+/** The second of the video a piece of evidence points at, or null. */
+export const evAt = (x: string | { text: string; at: number | null }) => (typeof x === 'string' ? null : x.at);
