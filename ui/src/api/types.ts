@@ -372,7 +372,7 @@ export interface WebhookCall {
 export interface Settings {
   plex: { url: string; token: string; libraries: string[]; path_map: { from: string; to: string }[] };
   labels: { write: boolean; prefix: string; tags: string[] };
-  ai: { enabled: boolean; model: string; vision_model: string; base_url: string; api_key: string; monthly_limit: number; auto_accept: number };
+  ai: { enabled: boolean; model: string; vision_model: string; base_url: string; api_key: string; keys: Record<string, string>; effort: 'low' | 'medium' | 'high'; monthly_limit: number; auto_accept: number };
   tags: { families_off: string[]; search_closely: string[] };
   faces: { enabled: boolean; models: { name: string; present: boolean; size: number | null }[] };
   general: { theme: 'dark' | 'light' | 'system'; language: 'en' | 'es'; clock: '24h' | '12h' };

@@ -315,3 +315,17 @@ def test_a_finished_job_leaves_other_jobs_steps_queued(core, analysed) -> None:
     rows = core.store.step_rows(analysed)
     assert rows["cast"]["state"] == "queued"
     assert rows["signals"]["state"] == "done"
+
+
+def test_reasoning_models_get_room_and_effort(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from marcarr import ai
+    from marcarr.config import AICfg
+
+    cfg = AICfg(enabled=True, model="openai/gpt-5-mini")
+    monkeypatch.setattr(ai, "capabilities", lambda m: SimpleNamespace(is_reasoning=True, max_output_tokens=128000))
+    opts = ai.call_options(cfg, cfg.model, 4096)
+    assert opts["effort"] == "low" and opts["max_tokens"] >= ai.REASONING_ROOM
+    monkeypatch.setattr(ai, "capabilities", lambda m: SimpleNamespace(is_reasoning=False, max_output_tokens=16384))
+    assert "effort" not in ai.call_options(cfg, "openai/gpt-4o", 4096)

@@ -71,6 +71,14 @@ def _record(usage: dict[str, Any] | None) -> None:
     meter = getattr(_local, "meter", None)
     if meter is not None:
         meter.add(usage)
+    hook = getattr(_local, "on_call", None)
+    if hook is not None and usage:
+        hook(usage)
+
+
+def on_call(fn: Any) -> None:
+    """Called with the usage of each model call made on this thread (the live log)."""
+    _local.on_call = fn
 
 
 def model_spec(cfg: AICfg, *, vision: bool = False) -> tuple[str, dict[str, Any]]:
@@ -88,11 +96,40 @@ def model_spec(cfg: AICfg, *, vision: bool = False) -> tuple[str, dict[str, Any]
         raise AIError(f"the model {model!r} needs a provider prefix such as ollama/, claude/ or "
                       "google/ (or set a base URL for an OpenAI-compatible endpoint)")
     else:
-        if cfg.api_key:
-            overrides["api_key"] = cfg.api_key
+        key = (cfg.keys or {}).get(provider) or cfg.api_key
+        if key:
+            overrides["api_key"] = key
         if cfg.base_url and provider == "ollama":
             overrides["endpoint"] = cfg.base_url
     return model, overrides
+
+
+def capabilities(model: str) -> Any | None:
+    """Prompture's catalog entry for "provider/model" (vision, reasoning, limits)."""
+    provider, _, model_id = model.partition("/")
+    try:
+        from prompture.infra.model_rates import get_model_capabilities
+
+        return get_model_capabilities(provider, model_id)
+    except Exception:  # noqa: BLE001 - an unknown model just has no catalog entry
+        return None
+
+
+REASONING_ROOM = 16_000  # a reasoning model thinks before it answers: both count
+
+
+def call_options(cfg: AICfg, model: str, max_tokens: int) -> dict[str, Any]:
+    """Options for one call. A reasoning model gets the configured effort and room
+    for its thinking, or it can spend the whole budget before writing the answer."""
+    opts: dict[str, Any] = {"timeout": cfg.timeout, "max_tokens": max_tokens, "temperature": 0.2}
+    caps = capabilities(model)
+    if caps is not None and caps.is_reasoning:
+        opts["effort"] = cfg.effort
+        room = max(max_tokens * 4, REASONING_ROOM)
+        if caps.max_output_tokens:
+            room = min(room, int(caps.max_output_tokens))
+        opts["max_tokens"] = room
+    return opts
 
 
 def driver_for(cfg: AICfg, *, vision: bool = False) -> Any:
@@ -120,18 +157,24 @@ def ask_json(cfg: AICfg, schema: type[BaseModel], system: str, prompt: str, *,
     model, _ = model_spec(cfg, vision=vision)
     feedback = ""
     last: Exception | None = None
+    options = call_options(cfg, model, max_tokens)
     for _attempt in range(retries + 1):
         try:
             result = prompture.ask_for_json(
                 driver=driver, content_prompt=prompt + feedback,
                 json_schema=schema.model_json_schema(), system_prompt=system,
-                model_name=model.split("/", 1)[-1],
-                options={"timeout": cfg.timeout, "max_tokens": max_tokens, "temperature": 0.2},
+                model_name=model.split("/", 1)[-1], options=options,
                 ai_cleanup=False, cache=False, images=images or None)
             _record(result.get("usage"))
             return schema.model_validate(result["json_object"])
         except (ExtractionError, ValidationError, KeyError, TypeError) as exc:
             last = exc
+            _record(getattr(exc, "usage", None))  # a cut-off reply was still paid for
+            if "max_tokens" in str(exc):
+                # cut off, not wrong: the same question with more room
+                options = {**options, "max_tokens": int(options["max_tokens"]) * 2}
+                feedback = ""
+                continue
             feedback = (f"\nThe previous answer was invalid: {str(exc)[:300]}. "
                         "Return JSON matching the schema exactly.")
         except AIError:

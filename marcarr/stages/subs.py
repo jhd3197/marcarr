@@ -136,29 +136,65 @@ def pick_stream(streams: list[dict[str, Any]], lang: str = "en") -> dict[str, An
     return min(streams, key=rank) if streams else None
 
 
-def extract_stream(ffmpeg: str, video: str, sub_index: int, timeout: float = 300) -> str:
-    """One subtitle track (``0:s:<sub_index>``) converted to SRT text."""
-    proc = subprocess.run(  # noqa: S603 - argv list
-        [
-            ffmpeg,
-            "-v",
-            "error",
-            "-nostdin",
-            "-i",
-            video,
-            "-map",
-            f"0:s:{sub_index}",
-            "-f",
-            "srt",
-            "-",
-        ],
-        capture_output=True,
-        timeout=timeout,
-        check=False,
-    )
+def extract_stream(ffmpeg: str, video: str, sub_index: int, timeout: float = 3600,
+                   progress: Any = None, cancel: Any = None, total: float | None = None) -> str:
+    """One subtitle track (``0:s:<sub_index>``) converted to SRT text.
+
+    ffmpeg has to read the whole file to collect a track, which takes minutes for a
+    long film on a network drive, so it reports how far it has read
+    (``progress(fraction)``) and stops when *cancel* is set.
+    """
+    import threading
+    import time
+
+    proc = subprocess.Popen(  # noqa: S603 - argv list
+        [ffmpeg, "-v", "error", "-nostdin", "-nostats", "-progress", "pipe:2", "-i", video,
+         "-map", f"0:s:{sub_index}", "-vn", "-an", "-dn", "-f", "srt", "-"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
+    out: list[bytes] = []
+    errs: list[bytes] = []
+    seen = [0.0]
+
+    def read_out() -> None:
+        if proc.stdout:
+            out.append(proc.stdout.read())
+
+    def read_err() -> None:
+        for raw in iter(proc.stderr.readline, b"") if proc.stderr else []:
+            if raw.startswith(b"out_time_us="):
+                try:
+                    seen[0] = int(raw.split(b"=", 1)[1]) / 1_000_000
+                except ValueError:
+                    pass
+            elif not raw.startswith((b"frame=", b"fps=", b"stream_", b"bitrate=", b"total_size=",
+                                     b"out_time", b"dup_", b"drop_", b"speed=", b"progress=")):
+                errs.append(raw)
+
+    readers = [threading.Thread(target=read_out, daemon=True),
+               threading.Thread(target=read_err, daemon=True)]
+    for r in readers:
+        r.start()
+    started = time.monotonic()
+    try:
+        while proc.poll() is None:
+            try:
+                proc.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                if progress is not None and total:
+                    progress(min(seen[0] / total, 1.0))
+                if cancel is not None and cancel.is_set():
+                    raise RuntimeError("cancelled") from None
+                if time.monotonic() - started > timeout:
+                    raise RuntimeError(f"reading the subtitle track took over {timeout:g} s") from None
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+    for r in readers:
+        r.join(timeout=5)
     if proc.returncode:
-        raise RuntimeError((proc.stderr or b"").decode("utf-8", "replace")[-300:])
-    return (proc.stdout or b"").decode("utf-8", "replace")
+        raise RuntimeError(b"".join(errs).decode("utf-8", "replace")[-300:] or "ffmpeg failed")
+    return b"".join(out).decode("utf-8", "replace")
 
 
 VIDEO_EXT = {".mkv", ".mp4", ".m4v", ".avi", ".mov", ".ts", ".m2ts", ".webm"}
@@ -189,7 +225,7 @@ def siblings(video: str) -> list[Path]:
 
 
 def _from_file(
-    video: str, ffmpeg: str, ffprobe: str, lang: str
+    video: str, ffmpeg: str, ffprobe: str, lang: str, progress: Any = None, cancel: Any = None
 ) -> tuple[list[Line], dict[str, Any]] | None:
     for p in sidecars(video, lang):
         lines = parse_srt(p.read_text(encoding="utf-8", errors="replace"))
@@ -197,7 +233,8 @@ def _from_file(
             return lines, {"kind": "sidecar", "file": p.name}
     stream = pick_stream(text_streams(ffprobe, video), lang)
     if stream is not None:
-        lines = parse_srt(extract_stream(ffmpeg, video, stream["index"]))
+        lines = parse_srt(extract_stream(ffmpeg, video, stream["index"], progress=progress,
+                                         cancel=cancel, total=duration(ffprobe, video)))
         if lines:
             return lines, {
                 "kind": "embedded",
@@ -209,14 +246,15 @@ def _from_file(
 
 
 def load(
-    video: str, ffmpeg: str = "ffmpeg", ffprobe: str = "ffprobe", lang: str = "en"
+    video: str, ffmpeg: str = "ffmpeg", ffprobe: str = "ffprobe", lang: str = "en",
+    progress: Any = None, cancel: Any = None,
 ) -> tuple[list[Line], dict[str, Any]]:
     """Subtitle lines for *video* and where they came from ({"kind": "none"} when none).
 
     When the file has none, another copy in the same folder with the same length
     (an .mkv next to an .mp4) lends its subtitles: same cut, same timings.
     """
-    found = _from_file(video, ffmpeg, ffprobe, lang)
+    found = _from_file(video, ffmpeg, ffprobe, lang, progress, cancel)
     if found:
         return found
     others = siblings(video)
@@ -225,7 +263,7 @@ def load(
         for other in others:
             theirs = duration(ffprobe, str(other))
             if mine and theirs and abs(mine - theirs) <= SAME_CUT:
-                found = _from_file(str(other), ffmpeg, ffprobe, lang)
+                found = _from_file(str(other), ffmpeg, ffprobe, lang, progress, cancel)
                 if found:
                     lines, src = found
                     return lines, {**src, "kind": f"{src['kind']} (from {other.name})"}

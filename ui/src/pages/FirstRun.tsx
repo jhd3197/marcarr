@@ -41,7 +41,7 @@ async function plexSignIn(signal: { cancelled: boolean }): Promise<string> {
   throw new Error(signal.cancelled ? 'Cancelled' : 'Plex sign-in timed out');
 }
 
-const DEFAULT_AI: Settings['ai'] = { enabled: true, model: '', vision_model: '', base_url: '', api_key: '', monthly_limit: 10, auto_accept: 0 };
+const DEFAULT_AI: Settings['ai'] = { enabled: true, model: '', vision_model: '', base_url: '', api_key: '', keys: {}, effort: 'low', monthly_limit: 10, auto_accept: 0 };
 
 export default function FirstRun() {
   const { refreshStatus } = useApp();

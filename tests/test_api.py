@@ -340,3 +340,14 @@ def test_deleting_a_custom_tag_in_use_retires_it(client, analysed) -> None:
     assert client.delete(f"/api/v1/tags/{row['id']}").status_code == 204
     assert client.delete("/api/v1/tags/mine/catchphrase").json()["deleted"]
     assert _mine(client) == []
+
+
+def test_provider_keys_are_masked_and_kept(client) -> None:
+    client.put("/api/v1/settings", json={"ai": {"keys": {"openai": "sk-one", "claude": "sk-two"}}})
+    keys = client.get("/api/v1/settings").json()["ai"]["keys"]
+    assert keys == {"openai": "••••", "claude": "••••"}
+    # the mask keeps a key, "" removes one
+    client.put("/api/v1/settings", json={"ai": {"keys": {"openai": "••••", "claude": ""}}})
+    from marcarr.routes.common import core
+
+    assert core().cfg.ai.keys == {"openai": "sk-one"}
