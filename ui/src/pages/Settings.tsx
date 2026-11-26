@@ -106,11 +106,14 @@ export default function Settings() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
+  // Hooks stay above the early returns: a render that returns early must call the
+  // same hooks as the one after it (React error #310 otherwise).
+  const models = useModels(!!draft?.ai.enabled);
+  const [extraKeys, setExtraKeys] = useState<string[]>([]);
+
   if (loaded.error && !draft) return <div className="pg-settings" style={{ display: 'contents' }}><h1 className="h1">Settings</h1><ErrorBox error={loaded.error} retry={loaded.reload} /></div>;
   if (!draft || !saved) return <div className="pg-settings" style={{ display: 'contents' }}><h1 className="h1">Settings</h1><Loading /></div>;
 
-  const models = useModels(!!draft?.ai.enabled);
-  const [extraKeys, setExtraKeys] = useState<string[]>([]);
   // a key row for every provider with a key, the chosen models' providers, and ones added now
   const keyRows = draft ? Array.from(new Set([
     ...Object.keys(draft.ai.keys || {}),
