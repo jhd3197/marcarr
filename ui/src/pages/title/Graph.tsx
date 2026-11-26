@@ -58,7 +58,7 @@ function GraphBody({ g, scenes, video, onSeek }: { g: CharacterGraph; scenes: Sc
 
   const header = (
     <div style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; padding-bottom: 12px')}>
-      <h2 className="h2" style={{ flex: '1 1 180px' }}>Who is seen with whom</h2>
+      <h2 className="h2" style={{ flex: '1 0 auto', whiteSpace: 'nowrap' }}>Who is seen with whom</h2>
       <span className="mono" style={css('font-size: 12px; color: var(--dim)')}>
         {plural(view.people.length, 'person', 'people')} · {plural(view.pairs.length, 'link')}
         {g.through ? ` · through scene ${g.through} of ${g.total_scenes}` : ''}
