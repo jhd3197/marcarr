@@ -15,20 +15,26 @@
 Each stretch is fitted to the scenes that hold its dialogue, the look step
 can turn a stretch down, and a moment keeps at most ``MAX_KEEP`` tags.
 
-**Cues.** Some tags carry cues: things to look for (``see``: pumpkins,
+**Cues.** Most tags carry cues: things to look for (``see``: pumpkins,
 costumes) and words to listen for (``hear``: "trick or treat"). Both prompts
 get them; a window whose subtitles say a ``hear`` word is marked for the text
 model, and the look step lists the cues it actually saw, kept as the
-proposal's evidence.
+proposal's evidence. A tag with ``see`` cues is strict: it is dropped unless
+the look step names one of them (``cue_seen``). Mood tags have no cues.
+
+**Signals.** When the film's signals are measured, the look prompt names the
+ones that cover the stretch ("Measured: dark, loud"): support for a tag, never
+a replacement for seeing it.
 
 **Searching closely.** After the pass, some tags (the occasions picked in
-Settings, the ones the film's TMDB keywords name, and any whose ``hear``
-words turn up in the subtitles) get a focused search of their own: a
+Settings, the ones the film's TMDB keywords name, and any occasion whose
+``hear`` words turn up in the subtitles) get a focused search of their own: a
 one-tag text pass with the cues, a look around every line that says a cue
 word, and, for the ones picked in Settings or named by keywords, a look at
 every scene the pass didn't already tag.
 
-Everything is saved as proposals, source ``ai:<model>``.
+Everything is saved as proposals, source ``ai:<model>``; mood and beat tags
+are never accepted without a person, whatever ``ai.auto_accept`` says.
 """
 
 from __future__ import annotations
@@ -54,6 +60,8 @@ MIN_LEN = 3.0
 OVERLAP = 0.5  # candidates sharing this much of the shorter one become one
 CUE_PAD = 45.0  # seconds around a line that says a cue word, for the focused look
 SCENE_MIN = 8.0  # scenes shorter than this aren't looked at by the focused pass
+MEASURED_SHARE = 0.25  # a signal over this much of a stretch is named in the look prompt
+MEASURED_PEAKS = {"loud": 2.0}  # short by nature: this many seconds inside is enough
 
 
 def tag_list(families: list[str]) -> list[dict[str, Any]]:
@@ -133,7 +141,11 @@ setting of the whole film, candles or torches on the walls (that isn't fire),
 or children and crowds who aren't the point of the scene. Answer match false
 when the proposed tags don't fit what you see, or the tiles are only studio
 logos or credits. Some tags list things to look for (see): name in "seen" the
-ones you actually see.
+ones you actually see, in the list's own words. Such a tag is only kept when
+you name one of its cues, and a cue someone merely talks about is not seen. A
+"Measured" line, when given, names what instruments measured over the stretch:
+it can support a tag (dark supports night, loud supports explosion) but never
+replaces seeing it.
 """
 
 
@@ -313,6 +325,40 @@ def merge(cands: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def measured(signals: dict[str, Any] | None, a: float, b: float) -> list[str]:
+    """The measured signals that cover a meaningful part of a..b, in the list's order."""
+    ranges = (signals or {}).get("signals") or {}
+    length = b - a
+    if length <= 0:
+        return []
+    out = []
+    for s in vocab.load().get("signals") or []:
+        inside = sum(max(0.0, min(b, y) - max(a, x)) for x, y in ranges.get(s["id"]) or [])
+        need = min(MEASURED_PEAKS.get(s["id"], length), MEASURED_SHARE * length)
+        if inside > 0 and inside >= need:
+            out.append(s["id"])
+    return out
+
+
+def look_prompt(
+    sheet: Any,
+    title: str,
+    cand: dict[str, Any],
+    tags: list[dict[str, Any]],
+    cast: list[dict[str, Any]],
+    signals: dict[str, Any] | None = None,
+) -> str:
+    seen = measured(signals, cand["start"], cand["end"])
+    return (
+        f"Film: {title}\nCast: {tagger.cast_hint(cast)}\n"
+        f"Proposed: {', '.join(cand['tags']) or '(none: tag what you see)'}\n"
+        f"From the dialogue: {cand.get('why') or '-'}\n"
+        + (f"Measured: {', '.join(seen)}\n" if seen else "")
+        + f"\nTags:\n{list_text(tags)}\n\n"
+        f"Tiles: {sheet.legend()}"
+    )
+
+
 def look(
     cfg: AICfg,
     sheet: Any,
@@ -320,14 +366,10 @@ def look(
     cand: dict[str, Any],
     tags: list[dict[str, Any]],
     cast: list[dict[str, Any]],
+    signals: dict[str, Any] | None = None,
 ) -> Any:
     _, look_model = schemas([t["id"] for t in tags])
-    prompt = (
-        f"Film: {title}\nCast: {tagger.cast_hint(cast)}\n"
-        f"Proposed: {', '.join(cand['tags']) or '(none: tag what you see)'}\n"
-        f"From the dialogue: {cand.get('why') or '-'}\n\nTags:\n{list_text(tags)}\n\n"
-        f"Tiles: {sheet.legend()}"
-    )
+    prompt = look_prompt(sheet, title, cand, tags, cast, signals)
     return ai.ask_json(cfg, look_model, LOOK_SYSTEM, prompt, images=[sheet.data])
 
 

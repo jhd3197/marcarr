@@ -16,6 +16,7 @@ from .clients.plex import PlexClient
 from .config import Config
 from .db import Database
 from .jobs import JobStore, Worker
+from .stages import vocab
 from .states import Caps, caps
 from .store import Store
 
@@ -29,6 +30,7 @@ class Core:
         self.cfg.data_dir.mkdir(parents=True, exist_ok=True)
         self.db = Database(cfg.db_path)
         self.store = Store(self.db)
+        vocab.use_custom(self.store.custom_tags)  # tag lookups see "My tags" too
         self.jobs = JobStore(self.db)
         self.keys = Keys(self.db)
         self.session = requests.Session()
@@ -119,4 +121,6 @@ class Core:
 
     def close(self) -> None:
         self.worker.stop()
+        if vocab._custom_source == self.store.custom_tags:
+            vocab.use_custom(None)
         self.db.close()

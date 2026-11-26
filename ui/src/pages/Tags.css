@@ -4,7 +4,12 @@
 .pg-tags .tl{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:6px;color:var(--text);font-size:13.5px;cursor:pointer}
 .pg-tags .tl:hover{background:var(--raised)}
 .app .pg-tags .tl a{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);text-decoration:none}
-.pg-tags .tl .c{margin-left:auto;font:400 12px 'DM Mono',monospace;color:var(--dim)}
+/* two counts per row: scenes kept, then scenes to review. A zero is plain dim text. */
+.pg-tags .tl .cs{margin-left:auto;flex:none;display:flex;gap:10px;font:400 12px 'DM Mono',monospace;color:var(--faint)}
+.pg-tags .tl .cs>*{min-width:2ch;text-align:right}
+.app .pg-tags .tl .cs a{overflow:visible;color:var(--text)}
+.app .pg-tags .tl .cs a.rv{color:var(--mark)}
+.app .pg-tags .tl .cs a:hover{text-decoration:underline}
 .pg-tags .bm{flex:none;display:inline-block;width:9px;height:12px;padding:0;border:0;background:var(--accent);clip-path:polygon(0 0,100% 0,100% 100%,50% calc(100% - 4px),0 100%)}
 .pg-tags button.bm{cursor:pointer;background:var(--border);opacity:0}
 .pg-tags button.bm.on{background:var(--accent);opacity:1}

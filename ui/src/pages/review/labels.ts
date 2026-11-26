@@ -7,13 +7,14 @@ export const sourceName = (s: string) => SOURCE[s.toLowerCase()] || s;
 
 export const FAMILIES: [Family, string][] = [
   ['place', 'Place'], ['action', 'Action'], ['beat', 'Beat'], ['mood', 'Mood'], ['occasion', 'Occasion'],
-  ['weather', 'Weather'], ['people', 'People'], ['creature', 'Creature'], ['content', 'Content'], ['element', 'Element'],
+  ['weather', 'Weather'], ['time', 'Time of day'], ['people', 'People'], ['creature', 'Creature'], ['content', 'Content'], ['element', 'Element'],
 ];
-export const familyName = (f: Family | string | null | undefined) => (f ? f.charAt(0).toUpperCase() + f.slice(1) : '');
+export const familyName = (f: Family | string | null | undefined) =>
+  (f ? FAMILIES.find(([id]) => id === f)?.[1] ?? f.charAt(0).toUpperCase() + f.slice(1) : '');
 
 /** The design's chip as a style string (for places that add to it). */
 export function chipCss(family: Family | string | null | undefined, status: 'proposed' | 'accepted' | 'rejected'): string {
-  const fv = 'var(--f-' + (family || 'place') + ')';
+  const fv = family ? 'var(--f-' + family + ')' : 'var(--accent)';
   return 'display:inline-flex;align-items:center;height:24px;padding:0 9px 0 7px;border-radius:6px;box-sizing:border-box;font-size:12px;font-weight:600;white-space:nowrap;' +
     (status === 'proposed' ? 'border:1.5px dashed ' + fv + ';color:var(--text)' : status === 'rejected' ? 'border:1px solid var(--line);color:var(--faint);text-decoration:line-through' : 'border-left:4px solid ' + fv + ';background:var(--raised);color:var(--text)') +
     (family === 'mood' ? ';font-weight:500' : '');

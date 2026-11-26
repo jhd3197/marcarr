@@ -1,5 +1,5 @@
-"""Tags (the list, keep and drop), the review queue, scene search, people,
-faces and named places."""
+"""Tags (the list, custom tags, keep and drop), the review queue, scene search, collections
+(saved searches), people, faces and named places."""
 
 from __future__ import annotations
 
@@ -18,14 +18,59 @@ router = APIRouter()
 
 
 # -- the tag list ----------------------------------------------------------------------
+def _scene_counts() -> dict[str, dict[str, int]]:
+    """Scenes per tag: kept ("accepted") and waiting for review ("proposed").
+
+    Counted the way scene search shows them, so a count and its link agree: only
+    videos the library shows, a tag is on a scene when it covers at least half of
+    it (the rule in Views.scenes), and a scene with both a kept and a proposed
+    range of one tag counts as kept. "rejected" stays a count of dropped ranges,
+    since a dropped tag is on no scene."""
+    c = core()
+    out = {tag: {"accepted": 0, "proposed": 0, "rejected": n["rejected"]}
+           for tag, n in c.store.tag_counts().items()}
+    by_video: dict[str, list[dict[str, Any]]] = {}
+    for r in c.store.tags(status=["accepted", "proposed"]):
+        by_video.setdefault(r["video_id"], []).append(r)
+    if not by_video:
+        return out
+    for vid in c.store.current_videos():
+        rows = by_video.get(vid["id"])
+        if not rows:
+            continue
+        for s in views().scene_rows(vid["id"]):
+            a, b = s["start"], s["end"]
+            here: dict[str, str] = {}
+            for t in rows:
+                if not (t["start"] < b - 0.5 and t["end"] > a + 0.5):
+                    continue
+                if min(t["end"], b) - max(t["start"], a) < 0.5 * min(b - a, t["end"] - t["start"]):
+                    continue
+                if here.get(t["tag"]) != "accepted":
+                    here[t["tag"]] = t["status"]
+            for tag, status in here.items():
+                out.setdefault(tag, {"accepted": 0, "proposed": 0, "rejected": 0})[status] += 1
+    return out
+
+
 @router.get("/tags", dependencies=[READ])
 def tag_list(family: str | None = None, used: bool = False) -> dict[str, Any]:
     c = core()
     data = vocab.load()
-    counts = c.store.tag_counts()
+    counts = _scene_counts()
     off = set(c.cfg.tags.families_off)
     labels = set(c.cfg.labels.tags) if c.cfg.labels.write else set()
     fams = []
+    zero = {"accepted": 0, "proposed": 0, "rejected": 0}
+    mine = []
+    for t in c.store.custom_tags():
+        f = t["family"]
+        if family and (f is None or (f != family.lower() and FAMILY_NAMES.get(f, "").lower() != family.lower())):
+            continue
+        n = counts.get(t["id"], zero)
+        if used and not (n["accepted"] or n["proposed"]):
+            continue
+        mine.append(_custom_view(t, n, labels, off))
     for f in data["families"]:
         if family and f != family.lower() and FAMILY_NAMES.get(f, "").lower() != family.lower():
             continue
@@ -46,7 +91,77 @@ def tag_list(family: str | None = None, used: bool = False) -> dict[str, Any]:
     own = [{"id": t["id"].removeprefix("fc:"), "name": t["name"], "hint": t.get("hint", "")}
            for t in data["cut_tags"]]
     sigs = [{"id": s["id"], "name": s["name"], "hint": s.get("hint", "")} for s in data.get("signals", [])]
-    return {"families": fams, "own": own, "signals": sigs}
+    # why the list may be empty: tags come from the AI step
+    tagging = {"enabled": c.cfg.ai.enabled, "model": bool(c.cfg.ai.model.strip()),
+               "videos_done": c.store.steps_done("tags")}
+    return {"mine": mine, "families": fams, "own": own, "signals": sigs, "tagging": tagging}
+
+
+# -- custom tags ("My tags") -----------------------------------------------------------
+def _custom_view(t: dict[str, Any], counts: dict[str, int] | None = None, labels: set[str] | None = None,
+                 off: set[str] | None = None) -> dict[str, Any]:
+    """A custom tag in the shape of a tag of the list, plus its scope and whether it is retired."""
+    c = core()
+    if labels is None:
+        labels = set(c.cfg.labels.tags) if c.cfg.labels.write else set()
+    if off is None:
+        off = set(c.cfg.tags.families_off)
+    scope = None
+    if t["title_id"]:  # one movie, or one show and its episodes
+        title = c.store.title_or_none(t["title_id"])
+        scope = {"title": t["title_id"], "name": _display_name(title) if title else t["title_id"],
+                 "type": title["type"] if title else None, "year": title["year"] if title else None}
+    return {"id": t["id"], "name": t["name"], "family": t["family"], "hint": t["hint"],
+            "see": t["cues"]["see"], "hear": t["cues"]["hear"],
+            "subjective": t["family"] in SUBJECTIVE,
+            "label": t["id"] in labels, "off": t["family"] in off,
+            "counts": counts if counts is not None else _scene_counts().get(
+                t["id"], {"accepted": 0, "proposed": 0, "rejected": 0}),
+            "custom": True, "scope": scope, "retired": t["retired"], "created_at": t["created_at"]}
+
+
+def _custom_body(body: dict[str, Any]) -> dict[str, Any]:
+    """The fields of a create or edit body the store takes (scope: a title id, or null)."""
+    fields = {k: body[k] for k in ("family", "hint", "see", "hear") if k in body}
+    if "scope" in body:
+        scope = body["scope"]
+        if isinstance(scope, dict):
+            scope = scope.get("title")
+        if scope is not None and not isinstance(scope, str):
+            raise MarcarrError("scope is a show's or a movie's title id, or null for the whole library")
+        fields["title_id"] = None if scope in (None, "", "library") else scope
+    return fields
+
+
+@router.post("/tags/mine", dependencies=[UI])
+def add_custom_tag(body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B008
+    row = core().store.add_custom_tag(body.get("name"), tag_id=body.get("id"), **_custom_body(body))
+    return _custom_view(row)
+
+
+@router.patch("/tags/mine/{tag}", dependencies=[UI])
+def edit_custom_tag(tag: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B008
+    fields = _custom_body(body)
+    if "name" in body:
+        fields["name"] = body["name"]
+    if "retired" in body:
+        if not isinstance(body["retired"], bool):
+            raise MarcarrError("retired is true or false")
+        fields["retired"] = body["retired"]
+    return _custom_view(core().store.update_custom_tag(tag, **fields))
+
+
+@router.delete("/tags/mine/{tag}", dependencies=[UI])
+def delete_custom_tag(tag: str) -> dict[str, Any]:
+    """Removes a tag no scene has. One that is on any scene is retired instead: its
+    scenes keep it, it is no longer proposed."""
+    c = core()
+    kept = c.store.delete_custom_tag(tag)
+    if kept is None and tag in c.cfg.labels.tags:  # nothing left to write to Plex
+        from .. import config as cfgmod
+
+        c.save_config(cfgmod.merge_update(c.cfg, {"labels": {"tags": [x for x in c.cfg.labels.tags if x != tag]}}))
+    return {"deleted": kept is None, "retired": kept is not None, "tag": _custom_view(kept) if kept else None}
 
 
 @router.post("/tags/{tag}/label", dependencies=[UI])
@@ -213,12 +328,34 @@ def review_items(family: str | None = None, source: str | None = None, title: st
 
 
 # -- scene search ----------------------------------------------------------------------
-@router.get("/search/scenes", dependencies=[READ])
-def search(request: Request, tags: str = "", person: str | None = None, q: str = "",
-           status: str = "accepted", title: str | None = None, page: int = 1, per_page: int = 60) -> dict[str, Any]:
+def _ids(raw: Any) -> list[str]:
+    """ "a,b" or ["a", "b"] -> the non-empty parts, in order, once each."""
+    parts = raw.split(",") if isinstance(raw, str) else list(raw or [])
+    return list(dict.fromkeys(str(x).strip() for x in parts if str(x).strip()))
+
+
+def _covered(ranges: list[list[float]], a: float, b: float) -> float:
+    """Seconds of a..b that the ranges cover (a signal's ranges do not overlap)."""
+    return sum(max(0.0, min(y, b) - max(x, a)) for x, y in ranges)
+
+
+def _find(tags: list[str], person: str | None, q: str, status: str = "accepted", title: str | None = None,
+          signals: list[str] | None = None) -> list[tuple[dict[str, Any], str, dict[str, Any], str | None]]:
+    """The scenes a search matches, as (title, video id, scene, matching line).
+
+    A scene must have every tag, the person on screen, a dialogue line with the
+    words, and every signal over at least half of it. With nothing asked, nothing
+    matches."""
     c, v = core(), views()
-    want = [tag_id(x) for x in tags.split(",") if x.strip()]
-    statuses = ["accepted", "proposed"] if status in ("proposed", "all") else ["accepted"]
+    want = [tag_id(x) for x in tags]
+    sigs = [slug(x) for x in signals or []]
+    ql = q.strip().lower()
+    if not (want or person or ql or sigs):
+        return []
+    # accepted: kept only. proposed (or all): kept and waiting. review: waiting only,
+    # which leaves out a scene where the tag is already kept.
+    statuses = (["accepted", "proposed"] if status in ("proposed", "all")
+                else ["proposed"] if status == "review" else ["accepted"])
     videos = c.store.current_videos()
     if title:
         videos = [x for x in videos if x["title_id"] == title]
@@ -227,35 +364,92 @@ def search(request: Request, tags: str = "", person: str | None = None, q: str =
         for r in c.store.tags(tag=want, status=statuses):
             have.setdefault(r["video_id"], set()).add(r["tag"])
         videos = [x for x in videos if set(want) <= have.get(x["id"], set())]
-    ql = q.strip().lower()
-    hits = []
+    out = []
     for vid in videos:
         t = c.store.title_or_none(vid["title_id"])
         if t is None:
             continue
+        measured: dict[str, Any] = {}
+        if sigs:  # one more stored document per video, read before the costlier scenes
+            measured = (c.store.result(vid["id"], "signals") or {}).get("signals") or {}
+            if not all(measured.get(x) for x in sigs):
+                continue
         lines = (c.store.result(vid["id"], "subtitles") or {}).get("lines") or [] if ql else []
         if ql and not any(ql in ln["text"].lower() for ln in lines):
             continue
         scenes = v.scenes(vid["id"])
         if not scenes:
             continue
+        shown = {**t, "name": _display_name(t)}
         for s in scenes:
             names = {x["tag"] for x in s["tags"] if x["status"] in statuses}
             if want and not set(want) <= names:
                 continue
             if person and person not in s["people"]:
                 continue
+            a, b = s["start"], s["end"]
+            if any(_covered(measured[x], a, b) < 0.5 * (b - a) for x in sigs):
+                continue
             line = None
             if ql:
-                line = next((ln["text"] for ln in lines if s["start"] <= ln["start"] < s["end"] and ql in ln["text"].lower()), None)
+                line = next((ln["text"] for ln in lines if a <= ln["start"] < b and ql in ln["text"].lower()), None)
                 if line is None:
                     continue
-            if not (want or person or ql):
-                continue
-            hits.append(v.hit({**t, "name": _display_name(t)}, vid["id"], s, line))
+            out.append((shown, vid["id"], s, line))
+    return out
+
+
+@router.get("/search/scenes", dependencies=[READ])
+def search(request: Request, tags: str = "", person: str | None = None, q: str = "",
+           status: str = "accepted", title: str | None = None, signals: str = "",
+           page: int = 1, per_page: int = 60) -> dict[str, Any]:
+    v = views()
+    hits = [v.hit(t, vid, s, line) for t, vid, s, line in _find(_ids(tags), person, q, status, title, _ids(signals))]
     per_page = max(1, min(per_page, 500))
     page = max(1, page)
     return {"total": len(hits), "page": page, "items": hits[(page - 1) * per_page: page * per_page]}
+
+
+# -- collections: saved scene searches -------------------------------------------------
+def _collection_view(col: dict[str, Any], count: bool = True) -> dict[str, Any]:
+    out = {"id": col["id"], "name": col["name"], "tags": col["tags"], "person": col["person"], "q": col["q"],
+           "signals": col["signals"], "created_at": col["created_at"]}
+    if count:  # kept scenes, found the way scene search finds them
+        out["scenes"] = len(_find(col["tags"], col["person"], col["q"], "accepted", None, col["signals"]))
+    return out
+
+
+@router.get("/collections", dependencies=[READ])
+def collections() -> dict[str, Any]:
+    items = [_collection_view(x) for x in core().store.collections()]
+    return {"total": len(items), "items": items}
+
+
+@router.post("/collections", dependencies=[UI])
+def add_collection(body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B008
+    tags = [tag_id(x) for x in _ids(body.get("tags"))]
+    unknown = [x for x in tags if vocab.get(x) is None]
+    if unknown:
+        raise MarcarrError(f"not in the tag list: {', '.join(unknown)}")
+    known = {s["id"] for s in vocab.load().get("signals") or []}
+    signals = [slug(x) for x in _ids(body.get("signals"))]
+    unknown = [x for x in signals if x not in known]
+    if unknown:
+        raise MarcarrError(f"not a measured signal: {', '.join(unknown)}")
+    col = core().store.add_collection(body.get("name"), tags, str(body.get("person") or "").strip() or None,
+                                      " ".join(str(body.get("q") or "").split())[:200], signals)
+    return _collection_view(col)
+
+
+@router.patch("/collections/{cid}", dependencies=[UI])
+def rename_collection(cid: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B008
+    return _collection_view(core().store.rename_collection(cid, body.get("name")))
+
+
+@router.delete("/collections/{cid}", status_code=204, dependencies=[UI])
+def delete_collection(cid: str) -> Response:
+    core().store.delete_collection(cid)
+    return Response(status_code=204)
 
 
 # -- people and faces ------------------------------------------------------------------

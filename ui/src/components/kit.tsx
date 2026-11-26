@@ -7,7 +7,7 @@ import { STEPS } from '../api/types';
 import { initials } from '../lib/format';
 
 // -- tag chips --------------------------------------------------------------------
-export const famVar = (family: Family | string | null | undefined) => `var(--f-${family || 'place'})`;
+export const famVar = (family: Family | string | null | undefined) => (family ? `var(--f-${family})` : 'var(--accent)');
 
 export function chipStyle(family: Family | string | null | undefined, status: TagStatus): CSSProperties {
   const base: CSSProperties = {

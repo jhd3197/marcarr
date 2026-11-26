@@ -18,7 +18,7 @@ export const placeHref = (id: string) => '/places/' + id.split('/').map(encodeUR
 /** Tag families in the order the timeline draws them. */
 export const FAMILIES: [string, Family][] = [
   ['Place', 'place'], ['Action', 'action'], ['Beat', 'beat'], ['Mood', 'mood'], ['Occasion', 'occasion'],
-  ['Weather', 'weather'], ['People', 'people'], ['Creature', 'creature'], ['Content', 'content'], ['Element', 'element'],
+  ['Weather', 'weather'], ['Time of day', 'time'], ['People', 'people'], ['Creature', 'creature'], ['Content', 'content'], ['Element', 'element'],
 ];
 
 /** The design's dot colours, as used under posters and in rows. */
