@@ -72,18 +72,25 @@ export function Timeline({ duration: D, scenes, signals, cast, tagsStep, facesSt
       const text = facesStep === 'off' ? 'Faces are turned off in Settings.' : 'Faces need two models that are not downloaded yet. Get them in Settings.';
       out.push({ key: 'faces-off', label: 'Faces', labelStyle: lab(40), trackStyle: 'position:relative;height:40px', bars: note(text) });
     } else {
-      // Screen time per person from the scenes they appear in; touching scenes merge into one run.
+      // Screen time per person from the scenes they are seen in; touching scenes merge
+      // into one run. A scene where they are only heard or named is a hollow tick.
+      const seenIn = (s: Scene) => s.seen || s.people;
       const time = new Map<string, number>();
-      for (const s of scenes) for (const p of s.people) time.set(p, (time.get(p) || 0) + (s.end - s.start));
+      for (const s of scenes) for (const p of seenIn(s)) time.set(p, (time.get(p) || 0) + (s.end - s.start));
       const top = [...time.entries()].sort((a, b) => b[1] - a[1]).slice(0, MAX_PEOPLE).map(([p]) => p);
       for (const id of top) {
         const runs: [number, number][] = [];
+        const ticks: Bar[] = [];
         for (const s of scenes) {
-          if (!s.people.includes(id)) continue;
+          if (!seenIn(s).includes(id)) {
+            const how = s.speakers?.includes(id) ? 'heard' : s.mentioned?.includes(id) ? 'named' : '';
+            if (how) ticks.push({ t: '', s: 'position:absolute;top:3px;bottom:3px;box-sizing:border-box;border-radius:2px;border:1.5px ' + (how === 'heard' ? 'solid' : 'dotted') + ' var(--dim);left:' + pct(s.start) + ';width:max(4px,calc(' + pct(s.end - s.start) + ' - 1px))' });
+            continue;
+          }
           const last = runs[runs.length - 1];
           if (last && s.start - last[1] < 1) last[1] = s.end; else runs.push([s.start, s.end]);
         }
-        out.push({ key: 'p:' + id, label: shortName(personName(id, cast)), person: cast.get(id) || null, labelStyle: lab(14), trackStyle: trk(14), bars: runs.map((b) => ({ t: '', s: 'position:absolute;top:3px;bottom:3px;border-radius:2px;background:var(--dim);left:' + pct(b[0]) + ';width:' + pct(b[1] - b[0]) })) });
+        out.push({ key: 'p:' + id, label: shortName(personName(id, cast)), person: cast.get(id) || null, labelStyle: lab(14), trackStyle: trk(14), bars: [...ticks, ...runs.map((b) => ({ t: '', s: 'position:absolute;top:3px;bottom:3px;border-radius:2px;background:var(--dim);left:' + pct(b[0]) + ';width:' + pct(b[1] - b[0]) }))] });
       }
     }
 
@@ -118,6 +125,8 @@ export function Timeline({ duration: D, scenes, signals, cast, tagsStep, facesSt
         <span style={css('display: inline-flex; align-items: center; gap: 14px; font-size: 12px; color: var(--dim)')}>
           <span style={css('display: inline-flex; align-items: center; gap: 6px')}><span style={css('width: 22px; height: 9px; border-radius: 2px; background: var(--dim)')} />Accepted</span>
           <span style={css('display: inline-flex; align-items: center; gap: 6px')}><span style={css('width: 22px; height: 9px; border-radius: 2px; border: 1.5px dashed var(--dim); box-sizing: border-box')} />Proposed</span>
+          {facesOn ? <span style={css('display: inline-flex; align-items: center; gap: 6px')} title="A person heard speaking but not seen"><span style={css('width: 12px; height: 9px; border-radius: 2px; border: 1.5px solid var(--dim); box-sizing: border-box')} />Heard</span> : null}
+          {facesOn ? <span style={css('display: inline-flex; align-items: center; gap: 6px')} title="A person only named in the dialogue"><span style={css('width: 12px; height: 9px; border-radius: 2px; border: 1.5px dotted var(--dim); box-sizing: border-box')} />Named</span> : null}
         </span>
         <div style={css('display: inline-flex; align-items: center; gap: 6px')}>
           <button type="button" className="btn sm" aria-label="Zoom out" disabled={zi === 0} onClick={() => setZi(Math.max(0, zi - 1))}>−</button>

@@ -145,9 +145,13 @@ def get_scene(video: str, scene: int) -> str:
         scene: the scene number.
     """
     d = _call("GET", f"/videos/{video}/scenes/{scene}")
-    out = [_scene_line(d, d["title"]["name"]), f"people: {', '.join(d['people']) or '-'}"]
+    out = [_scene_line(d, d["title"]["name"]), f"seen: {', '.join(d['seen']) or '-'}"]
+    if d.get("speakers"):
+        out.append(f"heard speaking, not seen: {', '.join(d['speakers'])}")
+    if d.get("mentioned"):
+        out.append(f"only mentioned: {', '.join(d['mentioned'])}")
     for t in d["all_tags"]:
-        ev = "; ".join(f"{k}: {', '.join(v)}" for k, v in t["evidence"].items() if v)
+        ev = "; ".join(f"{k}: {', '.join(_evidence_text(x) for x in v)}" for k, v in t["evidence"].items() if v)
         out.append(f"  {t['id']} {t['name']} [{t['status']}, {t['source']}] {ev}")
     out += [f"  {_clock(ln['start'])} {ln['text']}" for ln in d["lines"]]
     return _cut("\n".join(out))
@@ -191,8 +195,14 @@ def list_tags(family: str = "") -> str:
     return "\n".join(rows)
 
 
+def _evidence_text(x: Any) -> str:
+    if isinstance(x, dict):
+        return f"{x.get('text', '')} @{_clock(x['at'])}" if x.get("at") is not None else str(x.get("text", ""))
+    return str(x)
+
+
 def propose_tag(video: str, tag: str, start: float, end: float, seen: str = "", heard: str = "",
-                people: str = "") -> str:
+                people: str = "", mentioned: str = "") -> str:
     """Propose a tag over a stretch of a video; a person reviews it.
 
     Args:
@@ -202,12 +212,14 @@ def propose_tag(video: str, tag: str, start: float, end: float, seen: str = "", 
         end: where it ends (seconds).
         seen: what you saw that shows it, comma-separated.
         heard: what was said that shows it, comma-separated.
-        people: person ids in it, comma-separated.
+        people: ids of the people you can see in it, comma-separated.
+        mentioned: ids of people only named in the dialogue, not on screen, comma-separated.
     """
     split = lambda s: [x.strip() for x in s.split(",") if x.strip()]  # noqa: E731
     t = _call("POST", f"/videos/{video}/tags", json={
         "tag": tag, "start": start, "end": end, "status": "proposed",
-        "evidence": {"seen": split(seen), "heard": split(heard)}, "people": split(people)})
+        "evidence": {"seen": split(seen), "heard": split(heard)}, "people": split(people),
+        "mentioned": split(mentioned)})
     return f"proposed {t['id']} {t['name']} {_clock(t['start'])}-{_clock(t['end'])}: waiting for review"
 
 

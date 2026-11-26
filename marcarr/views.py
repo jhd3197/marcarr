@@ -208,7 +208,8 @@ class Views:
         return {
             **self.tag_ref(r), "video": r["video_id"], "title": r["title_id"], "start": r["start"],
             "end": r["end"], "source": source_kind(r["source"]), "source_detail": r["source"],
-            "confidence": r["confidence"], "people": r["people"], "evidence": r["evidence"],
+            "confidence": r["confidence"], "people": r["people"], "mentioned": r.get("mentioned") or [],
+            "evidence": r["evidence"],
             "summary": r["summary"], "created_at": r["created_at"], "updated_at": r["updated_at"],
         }
 
@@ -226,6 +227,7 @@ class Views:
             return []
         tags = tags if tags is not None else self.store.tags(video=vid, status=["proposed", "accepted"])
         faces = self.store.faces(video=vid)
+        pres = self.store.presence(video=vid, status=["proposed", "accepted"])
         places = self.store.place_scenes(video=vid)
         place_names = {p["id"]: p for p in self.store.places()} if places else {}
         sure = self.core.cfg.faces.sure
@@ -237,13 +239,23 @@ class Views:
             refs: dict[str, dict[str, Any]] = {}
             for t in sorted(here, key=lambda t: t["status"] != "accepted"):
                 refs.setdefault(t["tag"], self.tag_ref(t))
-            people: list[str] = []
+            # How each character is in the scene. Seen: a face match, or a tag that saw
+            # them. Mentioned: only named in the dialogue. Speaker: an app heard them talk.
+            seen: list[str] = []
             for f in faces:
                 if a <= f["at"] < b and f["person_id"] and f["confirmed"] != 0 and (
                         f["confirmed"] == 1 or f["score"] >= sure):
-                    people.append(f["person_id"])
+                    seen.append(f["person_id"])
             for t in here:
-                people += t["people"]
+                seen += t["people"]
+            mentioned = [p for t in here for p in t.get("mentioned") or []]
+            speakers: list[str] = []
+            for p in pres:
+                if p["start"] < b and p["end"] > a:
+                    {"seen": seen, "mentioned": mentioned, "speaker": speakers}[p["how"]].append(p["person_id"])
+            seen = list(dict.fromkeys(seen))
+            speakers = [p for p in dict.fromkeys(speakers) if p not in seen]
+            mentioned = [p for p in dict.fromkeys(mentioned) if p not in seen and p not in speakers]
             summary = ""
             best = 0.0
             for t in here:
@@ -254,7 +266,8 @@ class Views:
             pid = place["place_id"] if place else None
             out.append({
                 "n": i + 1, "start": a, "end": b, "shots": s.get("shots", 0),
-                "people": list(dict.fromkeys(people)), "tags": list(refs.values()),
+                "people": seen, "seen": seen, "speakers": speakers, "mentioned": mentioned,
+                "tags": list(refs.values()),
                 "place": pid, "place_name": self.place_path_name(pid, place_names) if pid else None,
                 "summary": summary, "still": f"{API}/videos/{vid}/scenes/{i + 1}/still.jpg",
                 "spoiler": any(r["tag"] in SPOILER_TAGS for r in refs.values()),
@@ -299,10 +312,11 @@ class Views:
         for f in frames:
             f["url"] = f"{API}/videos/{vid}/frame.jpg?t={f['t']:.2f}&h=240"
         faces = [self.face_view(f) for f in self.store.faces(video=vid, start=a, end=b)]
+        presence = [self.presence_view(p) for p in self.store.presence(video=vid, start=a, end=b)]
         return {
             **s, "video": vid, "title": {"id": t["id"], "name": t["name"], "year": t["year"]},
             "duration": v["duration"], "all_tags": all_tags, "lines": lines, "shot_cuts": cuts,
-            "frames": frames, "faces": faces, "cast": self.cast_people(t["id"]),
+            "frames": frames, "faces": faces, "presence": presence, "cast": self.cast_people(t["id"]),
             "prev": n - 1 if n > 1 else None, "next": n + 1 if n < len(scenes) else None,
         }
 
@@ -313,6 +327,12 @@ class Views:
                 "score": round(f["score"], 2), "box": f["box"],
                 "confirmed": None if conf is None else bool(conf),
                 "still": f"{API}/faces/{f['id']}/crop.jpg"}
+
+    @staticmethod
+    def presence_view(p: dict[str, Any]) -> dict[str, Any]:
+        return {"id": p["id"], "video": p["video_id"], "person": p["person_id"], "how": p["how"],
+                "start": p["start"], "end": p["end"], "at": p["at"], "source": source_kind(p["source"]),
+                "source_detail": p["source"], "status": p["status"], "note": p["note"]}
 
     def person_view(self, p: dict[str, Any], titles: int | None = None) -> dict[str, Any]:
         out = {"id": p["id"], "actor": p["actor"], "character": p["character"],

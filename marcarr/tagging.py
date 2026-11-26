@@ -124,7 +124,9 @@ def run_tagging(core: Core, vid: str, progress: Any, ctx: JobContext) -> str:
             stats["turned_down"] += 1
             return
         conf = round((c["confidence"] + check.confidence) / 2, 2)
-        people = people_ids(cast, list(dict.fromkeys([*check.people, *c["people"]])))
+        # The look names who is on screen; the dialogue pass only who is talked about.
+        people = people_ids(cast, list(check.people))
+        mentioned = [p for p in people_ids(cast, list(c["people"])) if p not in people]
         for tag in keep:
             if store.overlapping(vid, a, b, tag):
                 continue
@@ -134,7 +136,7 @@ def run_tagging(core: Core, vid: str, progress: Any, ctx: JobContext) -> str:
             sure = conf >= cfg.ai.auto_accept and not decides
             status = "accepted" if sure else "proposed"
             row = store.add_tag(vid, t["id"], tag, a, b, status=status, source=source,
-                                confidence=conf, people=people,
+                                confidence=conf, people=people, mentioned=mentioned,
                                 evidence={"heard": list(dict.fromkeys(heard)),
                                           "seen": list(dict.fromkeys(check.seen))},
                                 summary=check.summary or c.get("why") or "")

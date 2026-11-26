@@ -274,6 +274,8 @@ def at_time(vid: str, t: float) -> dict[str, Any]:
     if any(ln["start"] <= t < ln["end"] for ln in subs) and "dialogue" not in here:
         here.append("dialogue")
     return {"t": t, "scene": n, "people": people,
+            "mentioned": list(scene["mentioned"]) if scene else [],
+            "speakers": list(scene["speakers"]) if scene else [],
             "tags": [{"tag": x["tag"], "name": v.tag_ref(x)["name"], "status": x["status"]} for x in tags],
             "place": scene["place"] if scene else None, "signals": sorted(here)}
 
@@ -351,19 +353,63 @@ def propose_tag(vid: str, request: Request, body: dict[str, Any] = Body(...)) ->
     if isinstance(ev, list):
         ev = {"seen": ev}
     people = [str(p) for p in body.get("people") or []]
+    mentioned = [str(p) for p in body.get("mentioned") or []]
     out = []
     for name in names:
         tag = tag_id(name)
         if not tag:
             raise MarcarrError(f"bad tag {name!r}")
         row = c.store.add_tag(vid, v["title_id"], tag, a, b, status=status, source=who,
-                              confidence=body.get("confidence"), people=people, evidence=ev,
+                              confidence=body.get("confidence"), people=people, evidence=ev, mentioned=mentioned,
                               summary=str(body.get("summary") or ""))
         view = views().tag_view(row)
         if status == "proposed":
             c.events.emit("tag.proposed", {"tag": view})
         out.append(view)
     return out[0] if len(out) == 1 else JSONResponse(out)  # type: ignore[return-value]
+
+
+# -- how characters are in a scene ----------------------------------------------------
+@router.get("/videos/{vid}/presence", dependencies=[READ])
+def list_presence(vid: str, request: Request) -> dict[str, Any]:
+    c = core()
+    c.store.video(vid)
+    rows = c.store.presence(video=vid, person=request.query_params.get("person") or None,
+                            start=_num(request.query_params.get("from")), end=_num(request.query_params.get("to")))
+    return {"total": len(rows), "items": [views().presence_view(r) for r in rows]}
+
+
+@router.post("/videos/{vid}/presence", dependencies=[PROPOSE])
+def add_presence(vid: str, request: Request, body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B008
+    """Report a character in a stretch: seen on screen, mentioned by name, or heard
+    speaking. Apps propose; the web page may add it kept."""
+    c = core()
+    v = c.store.video(vid)
+    a, b = clean_range(body.get("start"), body.get("end"), v["duration"])
+    who = source_of(request)
+    status = body.get("status") or "proposed"
+    if who != "person" and status == "accepted":
+        status = "proposed"
+    at = _num(body.get("at")) if body.get("at") is not None else None
+    row = c.store.add_presence(vid, str(body.get("person") or ""), a, b, str(body.get("how") or ""),
+                               source=who, status=status, at=at, note=str(body.get("note") or ""))
+    return views().presence_view(row)
+
+
+@router.post("/presence/{pid}/keep", dependencies=[REVIEW])
+def keep_presence(pid: str) -> dict[str, Any]:
+    return views().presence_view(core().store.set_presence_status(pid, "accepted"))
+
+
+@router.post("/presence/{pid}/drop", dependencies=[REVIEW])
+def drop_presence(pid: str) -> dict[str, Any]:
+    return views().presence_view(core().store.set_presence_status(pid, "rejected"))
+
+
+@router.delete("/presence/{pid}", status_code=204, dependencies=[REVIEW])
+def delete_presence(pid: str) -> Response:
+    core().store.delete_presence(pid)
+    return Response(status_code=204)
 
 
 # -- the whole analysis in one document -----------------------------------------------
@@ -384,7 +430,8 @@ def analysis(vid: str) -> dict[str, Any]:
         "steps": {s: i["state"] for s, i in info.items()},
         "shots": (c.store.result(vid, "shots") or {}).get("shots") or [],
         "subtitles": (c.store.result(vid, "subtitles") or {}).get("lines") or [],
-        "scenes": [{k: s[k] for k in ("n", "start", "end", "people", "place", "summary", "still")}
+        "scenes": [{k: s[k] for k in ("n", "start", "end", "people", "seen", "speakers", "mentioned", "place",
+                                    "summary", "still")}
                    | {"tags": [x["name"] for x in s["tags"] if x["status"] == "accepted"]} for s in scenes],
         "tags": [v.tag_view(r) for r in c.store.tags(video=vid, status=["accepted", "proposed"])],
         "signals": [{"signal": k, "start": a, "end": b} for k, rs in sig.items() for a, b in rs],

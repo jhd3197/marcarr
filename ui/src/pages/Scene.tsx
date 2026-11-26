@@ -6,7 +6,7 @@ import { api, urls } from '../api/client';
 import type { Face, Person, SceneDetail, Tag } from '../api/types';
 import { css, ErrorBox, Loading } from '../components/kit';
 import { useApp } from '../components/Shell';
-import { hms, ms } from '../lib/format';
+import { evText, hms, ms } from '../lib/format';
 import { useApi, useKeys } from '../lib/hooks';
 import { useToast } from '../lib/toast';
 import { bgUrl, chipCss, errText, familyName, sourceName } from './review/labels';
@@ -139,7 +139,7 @@ function SceneView({ s, set, nav, toast, refreshStatus }: {
     const m = new Map<string, string>();
     for (const t of s.all_tags) {
       if (t.status === 'rejected') continue;
-      for (const h of t.evidence?.heard || []) if (h.trim()) m.set(h.trim().toLowerCase(), t.family || 'place');
+      for (const h of (t.evidence?.heard || []).map(evText)) if (h.trim()) m.set(h.trim().toLowerCase(), t.family || 'place');
     }
     return m;
   }, [s.all_tags]);
@@ -254,8 +254,8 @@ function SceneView({ s, set, nav, toast, refreshStatus }: {
           <section aria-label="Tags" className="box" style={css('padding: 6px 18px')}>
             {s.all_tags.map((t) => {
               const byPerson = t.source === 'person';
-              const heard = (t.evidence?.heard || []).join(', ');
-              const seen = (t.evidence?.seen || []).join(', ');
+              const heard = (t.evidence?.heard || []).map(evText).join(', ');
+              const seen = (t.evidence?.seen || []).map(evText).join(', ');
               return (
                 <div key={t.id} className="tr">
                   <div style={css('flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 5px')}>

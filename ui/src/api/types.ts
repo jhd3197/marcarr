@@ -117,9 +117,29 @@ export interface TagRef {
   status: TagStatus;
 }
 
+/** One piece of evidence: a short text, or a text with the second of the video that shows it. */
+export type EvidenceItem = string | { text: string; at: number | null };
+
 export interface Evidence {
-  heard: string[];
-  seen: string[];
+  heard: EvidenceItem[];
+  seen: EvidenceItem[];
+}
+
+/** How a character is in a stretch: seen on screen, only named, or heard speaking. */
+export type PresenceHow = 'seen' | 'mentioned' | 'speaker';
+
+export interface Presence {
+  id: string;
+  video: string;
+  person: string;
+  how: PresenceHow;
+  start: number;
+  end: number;
+  at: number | null; // the moment that shows it
+  source: string;
+  source_detail: string;
+  status: TagStatus;
+  note: string;
 }
 
 export interface Tag extends TagRef {
@@ -130,7 +150,8 @@ export interface Tag extends TagRef {
   source: string; // "person", "ai", "fanscut", "doblarr", "mcp"
   source_detail: string; // "ai:claude/claude-sonnet-5-5"
   confidence: number | null;
-  people: string[]; // person ids
+  people: string[]; // person ids seen in it
+  mentioned: string[]; // person ids only named in the dialogue
   evidence: Evidence;
   summary: string;
   created_at: string;
@@ -142,7 +163,10 @@ export interface Scene {
   start: number;
   end: number;
   shots: number;
-  people: string[]; // person ids seen or named in it
+  people: string[]; // person ids seen in it (the same as seen)
+  seen: string[]; // on screen: a face match or a tag that saw them
+  speakers: string[]; // heard speaking but not seen
+  mentioned: string[]; // only named in the dialogue
   tags: TagRef[]; // proposed and accepted (rejected left out)
   place: string | null; // named place id, e.g. "hogwarts/great-hall"
   place_name: string | null; // "Hogwarts › Great Hall"
@@ -179,6 +203,7 @@ export interface SceneDetail extends Scene {
   shot_cuts: number[]; // camera cut times inside and near the scene
   frames: { t: number; url: string }[]; // stills across the scene
   faces: Face[];
+  presence: Presence[]; // reported by apps and people, outside a tag
   cast: Person[];
   prev: number | null;
   next: number | null;
@@ -194,6 +219,8 @@ export interface AtTime {
   t: number;
   scene: number | null;
   people: string[];
+  speakers: string[];
+  mentioned: string[];
   tags: { tag: string; name: string; status: TagStatus }[];
   place: string | null;
   signals: string[];
