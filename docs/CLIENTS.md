@@ -40,6 +40,8 @@ Cache by video id.
 | Subtitle lines | `GET /videos/{id}/lines?from=&to=` |
 | Scenes with tags, people, place | `GET /videos/{id}/scenes?from=&to=&tag=` |
 | Who is seen, heard or named | `GET /videos/{id}/presence?person=&from=&to=` |
+| Who is seen with whom | `GET /titles/{id}/graph?video=&through=` |
+| A scene as text to paste | `GET /videos/{id}/scenes/{n}/brief?link=` |
 | Measured signals | `GET /videos/{id}/signals?signal=dark` |
 | Faces | `GET /videos/{id}/faces?person=&confirmed=true` |
 | What is on screen at t | `GET /videos/{id}/at/{seconds}` |

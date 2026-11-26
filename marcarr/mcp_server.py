@@ -138,23 +138,17 @@ def whats_at(video: str, seconds: float) -> str:
 
 
 def get_scene(video: str, scene: int) -> str:
-    """One scene with its tags (and why), people and dialogue.
+    """One scene: who is seen, heard or only named, its tags (and why, with the
+    moment each was seen or heard), and its dialogue. The same text as the title
+    page's Copy brief, with ids added.
 
     Args:
         video: the video id.
         scene: the scene number.
     """
-    d = _call("GET", f"/videos/{video}/scenes/{scene}")
-    out = [_scene_line(d, d["title"]["name"]), f"seen: {', '.join(d['seen']) or '-'}"]
-    if d.get("speakers"):
-        out.append(f"heard speaking, not seen: {', '.join(d['speakers'])}")
-    if d.get("mentioned"):
-        out.append(f"only mentioned: {', '.join(d['mentioned'])}")
-    for t in d["all_tags"]:
-        ev = "; ".join(f"{k}: {', '.join(_evidence_text(x) for x in v)}" for k, v in t["evidence"].items() if v)
-        out.append(f"  {t['id']} {t['name']} [{t['status']}, {t['source']}] {ev}")
-    out += [f"  {_clock(ln['start'])} {ln['text']}" for ln in d["lines"]]
-    return _cut("\n".join(out))
+    from .brief import scene_brief
+
+    return _cut(scene_brief(_call("GET", f"/videos/{video}/scenes/{scene}"), ids=True))
 
 
 def who_is_with(title: str, person: str = "", through: int = 0) -> str:
@@ -223,12 +217,6 @@ def list_tags(family: str = "") -> str:
     if mine:
         rows.insert(0, "[My tags] " + ", ".join(mine))
     return "\n".join(rows)
-
-
-def _evidence_text(x: Any) -> str:
-    if isinstance(x, dict):
-        return f"{x.get('text', '')} @{_clock(x['at'])}" if x.get("at") is not None else str(x.get("text", ""))
-    return str(x)
 
 
 def propose_tag(video: str, tag: str, start: float, end: float, seen: str = "", heard: str = "",

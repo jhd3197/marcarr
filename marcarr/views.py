@@ -315,6 +315,7 @@ class Views:
         presence = [self.presence_view(p) for p in self.store.presence(video=vid, start=a, end=b)]
         return {
             **s, "video": vid, "title": {"id": t["id"], "name": t["name"], "year": t["year"]},
+            "edition": v["edition"],
             "duration": v["duration"], "all_tags": all_tags, "lines": lines, "shot_cuts": cuts,
             "frames": frames, "faces": faces, "presence": presence, "cast": self.cast_people(t["id"]),
             "prev": n - 1 if n > 1 else None, "next": n + 1 if n < len(scenes) else None,

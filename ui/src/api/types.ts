@@ -196,6 +196,7 @@ export interface Face {
 
 export interface SceneDetail extends Scene {
   video: string;
+  edition: string;
   title: { id: string; name: string; year: number | null };
   duration: number | null;
   all_tags: Tag[]; // every tag overlapping the scene, rejected too

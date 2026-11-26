@@ -124,21 +124,29 @@ def run_tagging(core: Core, vid: str, progress: Any, ctx: JobContext) -> str:
             stats["turned_down"] += 1
             return
         conf = round((c["confidence"] + check.confidence) / 2, 2)
+        first = min(max(check.first_tile, 1), len(times)) - 1 if times else 0
+        seen_at = round(max(a, min(b, times[first])), 2) if times else round(a, 2)
         # The look names who is on screen; the dialogue pass only who is talked about.
         people = people_ids(cast, list(check.people))
         mentioned = [p for p in people_ids(cast, list(c["people"])) if p not in people]
         for tag in keep:
             if store.overlapping(vid, a, b, tag):
                 continue
-            heard = [w for when, w in hear.get(tag, []) if a <= when < b]
+            # Each piece of evidence keeps the moment that shows it, so a reviewer can
+            # jump to the line that was heard or the frame where it was seen.
+            heard: dict[str, float] = {}
+            for when, w in hear.get(tag, []):
+                if a <= when < b:
+                    heard.setdefault(w, round(when, 2))
             # a matter of opinion, or the person's own tag: a person decides
             decides = by_id[tag]["family"] in views.SUBJECTIVE or by_id[tag].get("custom")
             sure = conf >= cfg.ai.auto_accept and not decides
             status = "accepted" if sure else "proposed"
             row = store.add_tag(vid, t["id"], tag, a, b, status=status, source=source,
                                 confidence=conf, people=people, mentioned=mentioned,
-                                evidence={"heard": list(dict.fromkeys(heard)),
-                                          "seen": list(dict.fromkeys(check.seen))},
+                                evidence={"heard": [{"text": w, "at": at} for w, at in heard.items()],
+                                          "seen": [{"text": w, "at": seen_at}
+                                                   for w in dict.fromkeys(check.seen)]},
                                 summary=check.summary or c.get("why") or "")
             stats["proposed" if status == "proposed" else "kept"] += 1
             if status == "proposed":

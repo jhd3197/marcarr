@@ -141,6 +141,18 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
     }
   };
 
+  const copyBrief = async (n: number) => {
+    if (!video) return;
+    const s = scenes.find((x) => x.n === n);
+    try {
+      const { text } = await api.sceneBrief(video.id, n, timeLink(location.origin, titleHref(title.id), s ? s.start : at, view, through));
+      await navigator.clipboard.writeText(text);
+      toast('Brief copied');
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), true);
+    }
+  };
+
   const tagsOn = !video || video.steps.tags !== 'off' || scenes.some((s) => s.tags.length > 0);
   const facesOn = !!video && ((video.steps.faces !== 'none' && video.steps.faces !== 'off') || scenes.some((s) => s.people.length > 0));
   const toReview = video ? video.to_review : title.to_review;
@@ -244,6 +256,7 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
                 <div style={css('margin-top: auto; display: flex; flex-wrap: wrap; gap: 8px')}>
                   <Link to={`/videos/${video.id}/scenes/${sel.n}`} className={sel.to_review > 0 && tagsOn ? 'btn pri' : 'btn'}>{sel.to_review > 0 && tagsOn ? 'Review this scene' : 'Open scene'}</Link>
                   <button type="button" className="btn ghost" onClick={copyLink}>Copy time link</button>
+                  {!later(sel) ? <button type="button" className="btn ghost" onClick={() => void copyBrief(sel.n)} title="The scene as text: who is in it, its tags and why, the dialogue and a link back">Copy brief</button> : null}
                 </div>
               </div>
             </section>

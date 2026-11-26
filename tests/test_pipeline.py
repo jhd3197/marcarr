@@ -83,7 +83,11 @@ def test_tagging_with_a_fake_model(core, analysed, monkeypatch) -> None:
     xmas = next(t for t in tags if t["tag"] == "christmas")
     assert xmas["status"] == "proposed"
     assert xmas["people"] == ["mira-vale"]
-    assert "Merry Christmas" in xmas["evidence"]["heard"][0]
+    heard = xmas["evidence"]["heard"][0]
+    assert "Merry Christmas" in heard["text"]
+    assert heard["at"] == 2.0  # the subtitle line that said it
+    seen = xmas["evidence"]["seen"][0]
+    assert seen["text"] == "Christmas tree" and first["start"] <= seen["at"] <= first["end"]
     # a dropped tag is not proposed again on a rerun
     core.store.update_tag(xmas["id"], status="rejected")
     core.pipeline.submit(analysed, ["tags"])
@@ -285,7 +289,8 @@ def test_custom_tags_reach_the_model(core, analysed, monkeypatch) -> None:
     rows = {t["tag"]: t for t in store.tags(video=analysed)}
     assert rows["snow"]["status"] == "accepted"  # 0.9 sure, auto_accept 0.5
     assert rows["catchphrase"]["status"] == "proposed"  # a custom tag is never auto-accepted
-    assert "Merry Christmas" in rows["catchphrase"]["evidence"]["heard"]  # its hear cue, like a bundled one
+    # its hear cue, like a bundled one
+    assert {"text": "Merry Christmas", "at": 2.0} in rows["catchphrase"]["evidence"]["heard"]
     assert "red-scarf" not in rows and "elsewhere" not in rows  # a see cue nobody saw; not this film's
 
 

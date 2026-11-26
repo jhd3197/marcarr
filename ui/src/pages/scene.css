@@ -8,3 +8,9 @@
 .pg-scene .ev b{font-weight:600;color:var(--faint);text-transform:uppercase;font-size:10.5px;letter-spacing:.06em;margin-right:6px}
 .pg-scene .dl{display:flex;gap:12px;padding:5px 0;font-size:14px;line-height:1.45}
 @media (max-width:760px){.pg-scene .cs{grid-template-columns:repeat(2,1fr)}}
+.pg-scene .evb{padding:0;border:0;background:none;color:var(--text);font:inherit;cursor:pointer;text-decoration:underline dotted var(--faint);text-underline-offset:3px}
+.pg-scene .evb:hover{text-decoration-color:var(--mark)}
+.pg-scene .evb i{font:400 11px 'DM Mono',monospace;font-style:normal;color:var(--faint);margin-left:5px}
+.pg-scene .dl{scroll-margin:80px;border-radius:6px;transition:background .3s}
+.pg-scene .dl.flash{background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.pg-scene .frame-over{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(10,12,14,.72)}

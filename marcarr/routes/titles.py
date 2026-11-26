@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
+from .. import brief as briefmod
 from .. import graph as graphmod
 from .. import states as stmod
 from ..errors import MarcarrError, NotFoundError
@@ -221,6 +222,14 @@ def _num(s: str | None) -> float | None:
 @router.get("/videos/{vid}/scenes/{n}", dependencies=[READ])
 def get_scene(vid: str, n: int) -> dict[str, Any]:
     return views().scene_detail(vid, n)
+
+
+@router.get("/videos/{vid}/scenes/{n}/brief", dependencies=[READ])
+def scene_brief(vid: str, n: int, request: Request) -> dict[str, Any]:
+    """The scene as plain text to paste anywhere (the same text the MCP get_scene
+    tool gives). ?link= is added at the end, so the reader can get back here."""
+    link = (request.query_params.get("link") or "")[:500]
+    return {"text": briefmod.scene_brief(views().scene_detail(vid, n), link=link)}
 
 
 @router.patch("/videos/{vid}/scenes/{n}", dependencies=[REVIEW])

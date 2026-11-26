@@ -94,6 +94,7 @@ export const api = {
   scenes: (video: string, q: { from?: number; to?: number; tag?: string; review?: boolean } = {}) =>
     get<Paged<Scene>>(`/videos/${video}/scenes`, q),
   scene: (video: string, n: number) => get<SceneDetail>(`/videos/${video}/scenes/${n}`),
+  sceneBrief: (video: string, n: number, link?: string) => get<{ text: string }>(`/videos/${video}/scenes/${n}/brief`, { link }),
   moveScene: (video: string, n: number, body: { start?: number; end?: number; snap?: boolean }) =>
     patch<SceneDetail>(`/videos/${video}/scenes/${n}`, body),
   at: (video: string, t: number) => get<AtTime>(`/videos/${video}/at/${t}`),
