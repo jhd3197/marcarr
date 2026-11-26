@@ -260,4 +260,57 @@ def _v3() -> str:
     """
 
 
-MIGRATIONS: list[Callable[[], str]] = [_v1, _v2, _v3]
+def _v4() -> str:
+    # Versions and cuts. A Plex item can hold several files (an Extended and a
+    # Theatrical, or two encodes of one cut): each is a video, ``current`` stays the
+    # one the library analyses and ``in_plex`` says Plex still lists it.
+    # A cut range is footage one cut has and another lacks ("only in Extended"),
+    # marked by a person, measured by comparing two local versions, or found online.
+    return """
+        ALTER TABLE videos ADD COLUMN in_plex INTEGER NOT NULL DEFAULT 1;
+
+        CREATE TABLE cut_ranges (
+            id          TEXT PRIMARY KEY,      -- cut_<hex>
+            title_id    TEXT NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
+            edition     TEXT NOT NULL,         -- the cut that has the footage: Extended
+            base        TEXT NOT NULL DEFAULT '',   -- the cut that lacks it: Theatrical
+            kind        TEXT NOT NULL,         -- added | longer | removed
+            video_id    TEXT REFERENCES videos(id) ON DELETE SET NULL,  -- NULL: times as published
+            start       REAL,
+            end         REAL,
+            extra       REAL,                  -- seconds this cut adds (or lacks) here
+            status      TEXT NOT NULL,         -- proposed | accepted | rejected
+            source      TEXT NOT NULL,         -- person | compare | research:<model>
+            confidence  REAL,
+            note        TEXT NOT NULL DEFAULT '',
+            evidence    TEXT NOT NULL DEFAULT '[]',  -- source urls, or the two video ids
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        );
+        CREATE INDEX cut_ranges_title ON cut_ranges (title_id, start);
+
+        CREATE TABLE cut_maps (
+            base_id     TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+            other_id    TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+            doc         TEXT NOT NULL,         -- scale, matched cut pairs, segments
+            updated_at  TEXT NOT NULL,
+            PRIMARY KEY (base_id, other_id)
+        );
+
+        CREATE TABLE research_runs (
+            id          TEXT PRIMARY KEY,      -- rr_<hex>
+            title_id    TEXT NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
+            topic       TEXT NOT NULL,         -- cuts
+            question    TEXT NOT NULL,         -- what left the machine
+            model       TEXT NOT NULL DEFAULT '',
+            answer      TEXT NOT NULL DEFAULT '',
+            sources     TEXT NOT NULL DEFAULT '[]',
+            result      TEXT NOT NULL DEFAULT '{}',  -- what was read from the answer
+            cost        REAL NOT NULL DEFAULT 0,
+            created_at  TEXT NOT NULL
+        );
+        CREATE INDEX research_runs_title ON research_runs (title_id, created_at);
+    """
+
+
+MIGRATIONS: list[Callable[[], str]] = [_v1, _v2, _v3, _v4]

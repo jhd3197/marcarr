@@ -211,7 +211,42 @@ def propose_tag(video: str, tag: str, start: float, end: float, seen: str = "", 
     return f"proposed {t['id']} {t['name']} {_clock(t['start'])}-{_clock(t['end'])}: waiting for review"
 
 
-TOOLS = [list_titles, find_scenes, list_collections, whats_at, get_scene, read_dialogue, look, list_tags, propose_tag]
+def film_cuts(title: str) -> str:
+    """A film's versions (Extended, Theatrical...) and the footage one cut has that another lacks.
+
+    Args:
+        title: the title id (from list_titles), like movie:tmdb:672.
+    """
+    d = _call("GET", f"/titles/{title}/cuts")
+    out = [f"{v['id']} {v['edition'] or 'unnamed'}{' (guessed)' if v['guessed'] else ''}"
+           f" {(v['duration'] or 0) / 60:.0f} min{'' if v['in_plex'] else ' (gone)'}" for v in d["versions"]]
+    for r in d["ranges"]:
+        if r["status"] == "rejected":
+            continue
+        where = (f"{_clock(r['start'])}-{_clock(r['end'])} on {r['video_id']}" if r["start"] is not None
+                 and r["end"] is not None and r["video_id"] else "time unknown")
+        out.append(f"  {r['kind']} only in {r['edition']}: {where}"
+                   f"{' (rough, published)' if r['rough'] else ''} [{r['status']}] {r['note']}")
+    return _cut("\n".join(out) or "no versions")
+
+
+def time_in_version(video: str, seconds: float, other: str) -> str:
+    """Move a time from one version of a film to another (say a tag made on the Extended
+    to the Theatrical), once the two were compared.
+
+    Args:
+        video: the video id the time is on.
+        seconds: the time.
+        other: the other version's video id.
+    """
+    d = _call("GET", f"/videos/{video}/to/{other}", params={"t": seconds})
+    if d["at"] is None:
+        return f"{_clock(seconds)} is footage the other version does not have"
+    return f"{_clock(seconds)} on {video} is {_clock(d['at'])} on {other}"
+
+
+TOOLS = [list_titles, find_scenes, list_collections, whats_at, get_scene, read_dialogue, look, list_tags,
+         propose_tag, film_cuts, time_in_version]
 
 
 def tool_definitions() -> list[Any]:

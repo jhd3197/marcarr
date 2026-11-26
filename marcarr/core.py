@@ -40,16 +40,20 @@ class Core:
         self._plex_key: tuple[str, str] | None = None
         self._caps: Caps | None = None
 
-        from . import events, library, pipeline
+        from . import cuts, events, library, pipeline, research
 
         self.events = events.Events(self)
         self.pipeline = pipeline.Pipeline(self)
         self.library = library.Library(self)
+        self.cuts = cuts.Cuts(self)
+        self.research = research.Research(self)
         handlers = {
             "analyse": self.pipeline.job_analyse,
             "scan": self.library.job_scan,
             "labels": self.library.job_labels,
             "face_models": self.pipeline.job_face_models,
+            "compare": self.cuts.job_compare,
+            "research": self.research.job_research,
         }
         self.worker = Worker(self.jobs, handlers, on_finish=self._finished,
                              heavy_threads=int(cfg.analysis.at_once))

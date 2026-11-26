@@ -373,6 +373,7 @@ export interface Settings {
   plex: { url: string; token: string; libraries: string[]; path_map: { from: string; to: string }[] };
   labels: { write: boolean; prefix: string; tags: string[] };
   ai: { enabled: boolean; model: string; vision_model: string; base_url: string; api_key: string; keys: Record<string, string>; effort: 'low' | 'medium' | 'high'; monthly_limit: number; auto_accept: number };
+  research: { enabled: boolean; depth: 'quick' | 'standard' | 'deep'; max_cost: number };
   tags: { families_off: string[]; search_closely: string[] };
   faces: { enabled: boolean; models: { name: string; present: boolean; size: number | null }[] };
   general: { theme: 'dark' | 'light' | 'system'; language: 'en' | 'es'; clock: '24h' | '12h' };
@@ -385,4 +386,60 @@ export interface PlexLibrary {
   title: string;
   type: 'movie' | 'show';
   count: number | null;
+}
+
+// -- versions and cuts (footage one cut has and another lacks) ----------------------------
+export type CutKind = 'added' | 'longer' | 'removed';
+
+export interface CutVersion {
+  id: string;
+  edition: string; // the cut's name: named, or guessed (Theatrical next to an Extended)
+  guessed: boolean;
+  named: string; // what Plex or the file name says
+  duration: number | null;
+  file: string;
+  in_plex: boolean;
+  current: boolean; // the version the library analyses
+  audio: string[]; // audio track languages
+  steps_done: number;
+  has_shots: boolean;
+}
+
+export interface CutRange {
+  id: string;
+  title_id: string;
+  edition: string; // the cut that has the footage
+  base: string; // the cut that lacks it
+  kind: CutKind;
+  video_id: string | null; // times are on this version; null: as published
+  start: number | null;
+  end: number | null;
+  extra: number | null; // seconds this cut adds here
+  status: TagStatus;
+  source: string;
+  source_kind: string; // person | compare | research | an app's name
+  rough: boolean; // published times for someone else's copy
+  confidence: number | null;
+  note: string;
+  evidence: string[];
+  created_at: string;
+}
+
+export interface CutResearch {
+  id: string;
+  question: string;
+  model: string;
+  cost: number;
+  created_at: string;
+  sources: { n: number; url: string; title: string; cited: boolean }[];
+  editions: { name: string; runtime_minutes: number | null }[];
+}
+
+export interface TitleCuts {
+  title: { id: string; name: string; year: number | null; type: string };
+  versions: CutVersion[];
+  ranges: CutRange[];
+  compare: { a: string; b: string; same_film: boolean; coverage: number; speed: number; gaps: number } | null;
+  research: CutResearch[];
+  can: { compare: string | null; research: string | null };
 }

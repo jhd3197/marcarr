@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from . import __version__
 from .core import Core
 from .errors import ConfigError, MarcarrError, NotFoundError
-from .routes import common, review, system, titles
+from .routes import common, cuts, review, system, titles
 
 log = logging.getLogger("marcarr.server")
 UI_DIST = Path(__file__).resolve().parent.parent / "ui" / "dist"
@@ -47,7 +47,7 @@ def create_app(core: Core, *, start_worker: bool = False) -> FastAPI:
     async def _err(_r: Request, exc: MarcarrError) -> JSONResponse:
         return JSONResponse({"detail": str(exc)}, status_code=400)
 
-    for r in (system.router, titles.router, review.router):
+    for r in (system.router, titles.router, review.router, cuts.router):
         app.include_router(r, prefix="/api/v1")
 
     @app.get("/api/{rest:path}", include_in_schema=False)

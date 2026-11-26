@@ -36,6 +36,8 @@ EVENTS: dict[str, str] = {
     "tag.kept": "A person kept a tag",
     "tag.dropped": "A person dropped a tag",
     "labels.written": "Labels were written to Plex",
+    "cut.changed": "A cut range (footage only one cut has) was marked, kept or dropped",
+    "research.finished": "A lookup of a film's cuts online finished",
 }
 KEEP_CALLS = 200
 

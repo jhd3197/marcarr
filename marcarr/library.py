@@ -37,13 +37,28 @@ def plex_sort(item: dict[str, Any]) -> str:
     return sort_name(ts)
 
 
-def first_file(item: dict[str, Any]) -> tuple[str, str]:
-    """(file path, edition) of a Plex item's first media part."""
-    for media in item.get("Media") or []:
-        for part in media.get("Part") or []:
+def versions(item: dict[str, Any]) -> list[tuple[str, str]]:
+    """(file path, Plex edition) of each version of a Plex item, Plex's main one first.
+
+    A version is one ``Media`` (Plex keeps an Extended and a Theatrical file, or two
+    encodes of one cut, as versions of one item); its first part is the file. Plex's
+    edition title names the item, so it only names a file when there is one version.
+    """
+    out: list[tuple[str, str]] = []
+    media = item.get("Media") or []
+    for m in media:
+        for part in m.get("Part") or []:
             if part.get("file"):
-                return str(part["file"]), str(item.get("editionTitle") or "")
-    return "", ""
+                ed = str(item.get("editionTitle") or "") if len(media) == 1 else ""
+                out.append((str(part["file"]), ed))
+                break
+    return out
+
+
+def first_file(item: dict[str, Any]) -> tuple[str, str]:
+    """(file path, edition) of a Plex item's main version."""
+    vs = versions(item)
+    return vs[0] if vs else ("", "")
 
 
 class Library:
@@ -160,36 +175,47 @@ class Library:
         return tid
 
     def _file(self, tid: str, item: dict[str, Any], stats: dict[str, int], new: list[str]) -> None:
-        plex_path, edition = first_file(item)
-        if not plex_path:
-            return
+        """Every version of the item becomes a video of the title. The first (Plex's
+        main version) is the title's current video, the one the library analyses; the
+        others are listed on the title page and analysed when asked."""
+        present: list[str] = []
+        for i, (plex_path, edition) in enumerate(versions(item)):
+            vid = self._version(tid, plex_path, edition, main=i == 0, stats=stats, new=new)
+            if vid:
+                present.append(vid)
+        if present:
+            self.store.set_present(tid, present)
+
+    def _version(self, tid: str, plex_path: str, edition: str, *, main: bool,
+                 stats: dict[str, int], new: list[str]) -> str | None:
         path = self.core.map_path(plex_path)
         p = Path(path)
         try:
             st = p.stat()
         except OSError:
             stats["unreadable"] += 1
-            return
+            return None
         known = self.store.video_at(path, st.st_size, st.st_mtime)
         if known is not None:
-            self.store.touch_video(known["id"], tid)
+            self.store.touch_video(known["id"], tid, main=main)
             stats["videos"] += 1
-            return
+            return str(known["id"])
         try:
             ident = identity.content_identity(p, self.core.cfg.ffmpeg.probe_binary)
         except OSError:
             stats["unreadable"] += 1
-            return
+            return None
         before = self.store.db.one("SELECT id FROM videos WHERE content_key = ?", (ident["content_key"],))
-        vid = self.store.upsert_video(tid, path, ident, identity.edition_of(path, edition))
+        vid = self.store.upsert_video(tid, path, ident, identity.edition_of(path, edition), main=main)
         stats["videos"] += 1
-        if before is None:
+        if before is None and main:
             new.append(vid)
+        return vid
 
-    def add_file(self, tid: str, path: str) -> str:
+    def add_file(self, tid: str, path: str, *, main: bool = True, edition: str = "") -> str:
         """Register a file for a title by hand (tests, the CLI)."""
         ident = identity.content_identity(path, self.core.cfg.ffmpeg.probe_binary)
-        return self.store.upsert_video(tid, path, ident, identity.edition_of(path))
+        return self.store.upsert_video(tid, path, ident, identity.edition_of(path, edition), main=main)
 
     # -- Plex labels -------------------------------------------------------------------
     def job_labels(self, payload: dict[str, Any], ctx: JobContext) -> dict[str, Any]:

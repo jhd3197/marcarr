@@ -12,6 +12,7 @@ import SettingsPage from './pages/Settings';
 import ApiPage from './pages/Api';
 import PersonPage from './pages/Person';
 import PlacePage from './pages/Place';
+import CutsPage from './pages/Cuts';
 import FirstRun from './pages/FirstRun';
 
 // A show and a movie share /titles/:id (the page switches on type); a scene is
@@ -23,6 +24,7 @@ const router = createBrowserRouter([
     children: [
       { path: '/', element: <Library /> },
       { path: '/titles/:id', element: <TitlePage /> },
+      { path: '/titles/:id/cuts', element: <CutsPage /> },
       { path: '/videos/:video/scenes/:n', element: <ScenePage /> },
       { path: '/review', element: <Review /> },
       { path: '/search', element: <Search /> },

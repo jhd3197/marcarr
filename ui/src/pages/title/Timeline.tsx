@@ -30,9 +30,11 @@ export interface TimelineProps {
   at: number; // playhead, seconds
   episode: boolean;
   onSeek: (t: number) => void;
+  /** Footage only one cut has, on this video ("Only in Extended"). */
+  cuts?: { start: number; end: number; status: string; edition: string }[];
 }
 
-export function Timeline({ duration: D, scenes, signals, cast, tagsStep, facesStep, selected, at, episode, onSeek }: TimelineProps) {
+export function Timeline({ duration: D, scenes, signals, cast, tagsStep, facesStep, selected, at, episode, onSeek, cuts = [] }: TimelineProps) {
   const [zi, setZi] = useState(0);
   const z = ZOOMS[zi];
   const scroller = useRef<HTMLDivElement>(null);
@@ -48,6 +50,11 @@ export function Timeline({ duration: D, scenes, signals, cast, tagsStep, facesSt
     const ticks: number[] = [];
     for (let t = 0; t < D - step * 0.4; t += step) ticks.push(t);
     out.push({ key: 'ruler', label: '', labelStyle: lab(14), trackStyle: 'position:relative;height:14px', bars: ticks.map((t, i) => ({ t: Math.floor(t / 3600) + ':' + two((t % 3600) / 60), s: 'position:absolute;top:0;font:400 10px DM Mono,monospace;color:var(--faint);left:' + pct(t) + (i ? ';transform:translateX(-50%)' : '') })) });
+
+    if (cuts.length) {
+      const names = [...new Set(cuts.map((c) => c.edition))];
+      out.push({ key: 'cuts', label: names.length === 1 ? `Only in ${names[0]}` : 'Only in one cut', labelStyle: lab(14, ';font-weight:600;color:var(--text)'), trackStyle: trk(14), bars: cuts.map((c) => ({ t: '', s: 'position:absolute;top:1px;bottom:1px;box-sizing:border-box;border-radius:2px;left:' + pct(c.start) + ';width:max(2px,' + pct(c.end - c.start) + ');' + (c.status === 'proposed' ? 'border:1.5px dashed var(--accent)' : 'background:var(--accent)') })) });
+    }
 
     out.push({ key: 'scenes', label: 'Scenes', labelStyle: lab(28, ';font-weight:600;color:var(--text)'), trackStyle: 'position:relative;height:28px', bars: scenes.map((c) => ({ t: '', s: 'position:absolute;top:0;bottom:0;border-radius:2px;left:' + pct(c.start) + ';width:calc(' + pct(c.end - c.start) + ' - 1px);background:' + (c.n === selected ? 'var(--accent)' : 'var(--border)') })) });
 
@@ -93,7 +100,7 @@ export function Timeline({ duration: D, scenes, signals, cast, tagsStep, facesSt
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [D, scenes, signals, cast, tagsOn, facesOn, facesStep, selected, z]);
+  }, [D, scenes, signals, cast, tagsOn, facesOn, facesStep, selected, z, cuts]);
 
   // After zooming, bring the playhead back into view.
   useLayoutEffect(() => {

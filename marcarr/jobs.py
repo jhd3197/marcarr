@@ -28,7 +28,7 @@ from .errors import JobCancelled, NotFoundError
 log = logging.getLogger("marcarr.jobs")
 
 ACTIVE = ("queued", "running")
-HEAVY = frozenset({"analyse"})
+HEAVY = frozenset({"analyse", "compare"})
 LANES = ("heavy", "light")
 
 

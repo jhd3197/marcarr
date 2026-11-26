@@ -328,6 +328,10 @@ export default function Settings() {
                     <span className="mono" style={{ fontSize: 12.5, color: 'var(--dim)' }}>{money(status?.ai.month_cost)} used this month</span>
                     <Link to="/activity" style={{ fontSize: 12.5 }}>Activity</Link>
                   </Row>
+                  <Row label="Look up cuts">
+                    <Switch on={draft.research.enabled} label="Look up a film's cuts online" onChange={(v) => set('research', { enabled: v })} />
+                    <span>Find what an Extended or Director's Cut adds by searching the web. Sends the film's name and year; about {money(draft.research.max_cost)} at most per film.</span>
+                  </Row>
                 </>
               ) : (
                 <div style={{ marginTop: 12, padding: '16px 18px', border: '1px dashed var(--border)', borderRadius: 10, fontSize: 14, color: 'var(--dim)' }}>Shots, scenes, signals and cast still work. Tags and named places need AI.</div>

@@ -1,6 +1,6 @@
 // One function per Marcarr API call. Pages import from here, never fetch directly.
 import type {
-  Activity, ApiKey, AtTime, Collection, CustomTag, CustomTagBody, Face, Line, Paged, Person, Place, PlexLibrary, ReviewItem, ReviewQueue,
+  Activity, ApiKey, AtTime, Collection, CustomTag, CustomTagBody, CutKind, CutRange, TitleCuts, Face, Line, Paged, Person, Place, PlexLibrary, ReviewItem, ReviewQueue,
   Scene, SceneDetail, SceneHit, Settings, Signal, Status, Step, Tag, Title, TitleSummary, Video,
   Vocab, Webhook, WebhookCall,
 } from './types';
@@ -87,6 +87,14 @@ export const api = {
     get<Paged<TitleSummary> & { counts: Record<string, number> }>('/titles', q),
   title: (id: string) => get<Title>(`/titles/${enc(id)}`),
   runTitle: (id: string, steps?: Step[]) => post<{ queued: number }>(`/titles/${enc(id)}/run`, { steps }),
+  cuts: (id: string) => get<TitleCuts>(`/titles/${enc(id)}/cuts`),
+  markCut: (id: string, body: { edition: string; base?: string; kind?: CutKind; video?: string | null; start?: number | null; end?: number | null; note?: string }) =>
+    post<CutRange>(`/titles/${enc(id)}/cuts`, body),
+  editCut: (cut: string, body: Partial<Pick<CutRange, 'status' | 'start' | 'end' | 'note' | 'edition' | 'base' | 'kind'>>) => patch<CutRange>(`/cuts/${cut}`, body),
+  deleteCut: (cut: string) => del<{ deleted: string }>(`/cuts/${cut}`),
+  keepCuts: (id: string, source?: string) => post<{ kept: number }>(`/titles/${enc(id)}/cuts/keep`, { source }),
+  compareVersions: (id: string, a?: string, b?: string) => post<{ id: string }>(`/titles/${enc(id)}/cuts/compare`, { a, b }),
+  researchCuts: (id: string) => post<{ id: string }>(`/titles/${enc(id)}/cuts/research`),
   video: (id: string) => get<Video>(`/videos/${id}`),
   runVideo: (id: string, steps?: Step[]) => post<{ queued: boolean; position: number }>(`/videos/${id}/run`, { steps }),
   scenes: (video: string, q: { from?: number; to?: number; tag?: string; review?: boolean } = {}) =>
