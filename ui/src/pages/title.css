@@ -10,3 +10,6 @@
 /* Plain-text button that looks like the page's links ("All cast"). */
 .pg-title .linkish{padding:0;border:0;background:none;color:var(--mark);font:inherit;font-size:12.5px;cursor:pointer}
 @media (max-width:760px){.pg-title .ll{flex-basis:74px}}
+.pg-title svg g[role="button"]:focus{outline:none}
+.pg-title svg g[role="button"]:focus-visible circle:first-of-type{stroke:var(--accent);stroke-width:3}
+.pg-title svg g[role="button"]:focus-visible line:first-of-type{stroke:var(--accent);stroke-opacity:1}

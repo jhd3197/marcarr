@@ -117,9 +117,29 @@ export interface TagRef {
   status: TagStatus;
 }
 
+/** One piece of evidence: a short text, or a text with the second of the video that shows it. */
+export type EvidenceItem = string | { text: string; at: number | null };
+
 export interface Evidence {
-  heard: string[];
-  seen: string[];
+  heard: EvidenceItem[];
+  seen: EvidenceItem[];
+}
+
+/** How a character is in a stretch: seen on screen, only named, or heard speaking. */
+export type PresenceHow = 'seen' | 'mentioned' | 'speaker';
+
+export interface Presence {
+  id: string;
+  video: string;
+  person: string;
+  how: PresenceHow;
+  start: number;
+  end: number;
+  at: number | null; // the moment that shows it
+  source: string;
+  source_detail: string;
+  status: TagStatus;
+  note: string;
 }
 
 export interface Tag extends TagRef {
@@ -130,7 +150,8 @@ export interface Tag extends TagRef {
   source: string; // "person", "ai", "fanscut", "doblarr", "mcp"
   source_detail: string; // "ai:claude/claude-sonnet-5-5"
   confidence: number | null;
-  people: string[]; // person ids
+  people: string[]; // person ids seen in it
+  mentioned: string[]; // person ids only named in the dialogue
   evidence: Evidence;
   summary: string;
   created_at: string;
@@ -142,7 +163,10 @@ export interface Scene {
   start: number;
   end: number;
   shots: number;
-  people: string[]; // person ids seen or named in it
+  people: string[]; // person ids seen in it (the same as seen)
+  seen: string[]; // on screen: a face match or a tag that saw them
+  speakers: string[]; // heard speaking but not seen
+  mentioned: string[]; // only named in the dialogue
   tags: TagRef[]; // proposed and accepted (rejected left out)
   place: string | null; // named place id, e.g. "hogwarts/great-hall"
   place_name: string | null; // "Hogwarts › Great Hall"
@@ -172,6 +196,7 @@ export interface Face {
 
 export interface SceneDetail extends Scene {
   video: string;
+  edition: string;
   title: { id: string; name: string; year: number | null };
   duration: number | null;
   all_tags: Tag[]; // every tag overlapping the scene, rejected too
@@ -179,6 +204,7 @@ export interface SceneDetail extends Scene {
   shot_cuts: number[]; // camera cut times inside and near the scene
   frames: { t: number; url: string }[]; // stills across the scene
   faces: Face[];
+  presence: Presence[]; // reported by apps and people, outside a tag
   cast: Person[];
   prev: number | null;
   next: number | null;
@@ -194,6 +220,8 @@ export interface AtTime {
   t: number;
   scene: number | null;
   people: string[];
+  speakers: string[];
+  mentioned: string[];
   tags: { tag: string; name: string; status: TagStatus }[];
   place: string | null;
   signals: string[];
@@ -442,4 +470,37 @@ export interface TitleCuts {
   compare: { a: string; b: string; same_film: boolean; coverage: number; speed: number; gaps: number } | null;
   research: CutResearch[];
   can: { compare: string | null; research: string | null };
+}
+
+/** A character in the graph of a film or episode, from the scenes they are seen in. */
+export interface GraphPerson {
+  id: string;
+  name: string;
+  actor: string;
+  photo: string | null;
+  seconds: number; // screen time: the length of the scenes they are seen in
+  scenes: number[]; // scene numbers they are seen in
+  named: number; // scenes where they are only heard or named
+  first: { n: number; start: number } | null;
+  last: { n: number; start: number } | null;
+  gap: { from: number; to: number; start: number; end: number; seconds: number } | null; // longest absence
+  partners: { id: string; scenes: number }[]; // most frequent scene partners, top 5
+}
+
+/** Two people seen in the same scenes. */
+export interface GraphPair {
+  a: string;
+  b: string;
+  scenes: number[];
+  seconds: number;
+}
+
+export interface CharacterGraph {
+  title: string;
+  video: string;
+  total_scenes: number;
+  through: number | null; // the story stops at this scene; null = the whole story
+  scenes: number; // scenes counted
+  people: GraphPerson[]; // most screen time first
+  pairs: GraphPair[]; // most shared scenes first
 }

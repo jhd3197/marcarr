@@ -227,6 +227,8 @@ def edit_tag(tid: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # n
         fields["start"], fields["end"] = clean_range(body.get("start", cur["start"]), body.get("end", cur["end"]))
     if "people" in body:
         fields["people"] = [str(p) for p in body["people"] or []]
+    if "mentioned" in body:
+        fields["mentioned"] = [str(p) for p in body["mentioned"] or []]
     if "tag" in body:
         fields["tag"] = tag_id(body["tag"])
     if "summary" in body:

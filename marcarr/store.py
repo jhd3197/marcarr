@@ -18,6 +18,7 @@ from .stages import vocab
 STEPS = ("shots", "subtitles", "scenes", "signals", "cast", "faces", "tags")
 STATUSES = ("proposed", "accepted", "rejected")
 CUT_KINDS = ("added", "longer", "removed")
+PRESENCE = ("seen", "mentioned", "speaker")  # how a character is in a scene
 MAX_SUMMARY = 500
 MAX_CUES = 12  # per kind, on a custom tag
 MAX_CUE = 60
@@ -59,6 +60,28 @@ def clean_cues(raw: Any) -> list[str]:
     parts = raw.split(",") if isinstance(raw, str) else list(raw)
     words = [" ".join(str(x).split())[:MAX_CUE] for x in parts]
     return list(dict.fromkeys(w for w in words if w))[:MAX_CUES]
+
+
+def clean_evidence(raw: Any) -> dict[str, list[Any]]:
+    """A tag's evidence: {"heard": [...], "seen": [...]}, each item a short text or
+    {"text", "at"} where `at` is the second of the video that shows it."""
+    ev = raw if isinstance(raw, dict) else {"seen": raw} if isinstance(raw, list) else {}
+    out: dict[str, list[Any]] = {}
+    for kind in ("heard", "seen"):
+        items: list[Any] = []
+        for x in ev.get(kind) or []:
+            if isinstance(x, dict):
+                text = str(x.get("text") or "").strip()[:60]
+                try:
+                    at = round(float(x["at"]), 2) if x.get("at") is not None else None
+                except (TypeError, ValueError):
+                    at = None
+                if text:
+                    items.append({"text": text, "at": at} if at is not None and at >= 0 else text)
+            elif str(x).strip():
+                items.append(str(x).strip()[:60])
+        out[kind] = items[:12]
+    return out
 
 
 class Store:
@@ -308,26 +331,29 @@ class Store:
     def _tag(r: Any) -> dict[str, Any]:
         d = dict(r)
         d["people"] = json.loads(d["people"] or "[]")
+        d["mentioned"] = json.loads(d.get("mentioned") or "[]")
         ev = json.loads(d["evidence"] or "{}")
         d["evidence"] = {"heard": list(ev.get("heard") or []), "seen": list(ev.get("seen") or [])}
         return d
 
     def add_tag(self, vid: str, title_id: str, tag: str, start: float, end: float, *,
                 status: str = "proposed", source: str = "person", confidence: float | None = None,
-                people: list[str] | None = None, evidence: dict[str, list[str]] | None = None,
-                summary: str = "") -> dict[str, Any]:
+                people: list[str] | None = None, evidence: dict[str, list[Any]] | None = None,
+                summary: str = "", mentioned: list[str] | None = None) -> dict[str, Any]:
+        """A tag over one range. `people` are the characters seen in it; `mentioned`
+        the ones only named in the dialogue (someone seen is never also mentioned)."""
         if status not in STATUSES:
             raise MarcarrError(f"status must be one of {', '.join(STATUSES)}")
         tid = "tag_" + uuid.uuid4().hex[:10]
         stamp = now()
-        ev = evidence or {}
+        seen = list(dict.fromkeys(people or []))[:40]
+        named = [p for p in dict.fromkeys(mentioned or []) if p not in seen][:40]
         self.db.execute(
             "INSERT INTO tags (id, video_id, title_id, tag, start, end, status, source, confidence,"
-            " people, evidence, summary, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " people, mentioned, evidence, summary, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (tid, vid, title_id, tag, start, end, status, source[:80], confidence,
-             dumps(list(dict.fromkeys(people or []))[:40]),
-             dumps({"heard": [str(x)[:60] for x in ev.get("heard") or []][:12],
-                    "seen": [str(x)[:60] for x in ev.get("seen") or []][:12]}),
+             dumps(seen), dumps(named), dumps(clean_evidence(evidence)),
              (summary or "")[:MAX_SUMMARY], stamp, stamp))
         return self.tag(tid)
 
@@ -339,10 +365,13 @@ class Store:
 
     def update_tag(self, tid: str, **fields: Any) -> dict[str, Any]:
         self.tag(tid)
-        if "people" in fields:
-            fields["people"] = dumps(fields["people"])
+        if "people" in fields or "mentioned" in fields:
+            cur = self.tag(tid)
+            seen = list(dict.fromkeys(fields.get("people", cur["people"])))[:40]
+            named = [p for p in dict.fromkeys(fields.get("mentioned", cur["mentioned"])) if p not in seen][:40]
+            fields["people"], fields["mentioned"] = dumps(seen), dumps(named)
         if "evidence" in fields:
-            fields["evidence"] = dumps(fields["evidence"])
+            fields["evidence"] = dumps(clean_evidence(fields["evidence"]))
         if "status" in fields and fields["status"] not in STATUSES:
             raise MarcarrError(f"status must be one of {', '.join(STATUSES)}")
         fields["updated_at"] = now()
@@ -434,6 +463,60 @@ class Store:
             " JOIN titles t ON t.id = v.title_id"
             " WHERE s.step = ? AND s.state = 'done' AND v.current = 1 AND t.gone = 0", (step,))
         return int(r["n"]) if r else 0
+
+    # -- presence ----------------------------------------------------------------------
+    def add_presence(self, vid: str, person: str, start: float, end: float, how: str, *,
+                     source: str = "person", status: str = "proposed", at: float | None = None,
+                     note: str = "") -> dict[str, Any]:
+        if how not in PRESENCE:
+            raise MarcarrError(f"how must be one of {', '.join(PRESENCE)}")
+        if status not in STATUSES:
+            raise MarcarrError(f"status must be one of {', '.join(STATUSES)}")
+        self.person(person)
+        pid = "pre_" + uuid.uuid4().hex[:10]
+        self.db.execute(
+            "INSERT INTO presence (id, video_id, person_id, start, end, how, at, source, status, note,"
+            " created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (pid, vid, person, start, end, how, at, source[:80], status, (note or "")[:200], now()))
+        return self.presence_row(pid)
+
+    def presence_row(self, pid: str) -> dict[str, Any]:
+        r = self.db.one("SELECT * FROM presence WHERE id = ?", (pid,))
+        if r is None:
+            raise NotFoundError(f"presence {pid} not found")
+        return dict(r)
+
+    def set_presence_status(self, pid: str, status: str) -> dict[str, Any]:
+        if status not in STATUSES:
+            raise MarcarrError(f"status must be one of {', '.join(STATUSES)}")
+        self.presence_row(pid)
+        self.db.execute("UPDATE presence SET status = ? WHERE id = ?", (status, pid))
+        return self.presence_row(pid)
+
+    def delete_presence(self, pid: str) -> None:
+        self.presence_row(pid)
+        self.db.execute("DELETE FROM presence WHERE id = ?", (pid,))
+
+    def presence(self, *, video: str | None = None, person: str | None = None,
+                 start: float | None = None, end: float | None = None,
+                 status: list[str] | None = None) -> list[dict[str, Any]]:
+        sql, args = "SELECT * FROM presence WHERE 1=1", []
+        if video:
+            sql += " AND video_id = ?"
+            args.append(video)
+        if person:
+            sql += " AND person_id = ?"
+            args.append(person)
+        if start is not None:
+            sql += " AND end > ?"
+            args.append(start)
+        if end is not None:
+            sql += " AND start < ?"
+            args.append(end)
+        if status:
+            sql += f" AND status IN ({','.join('?' * len(status))})"
+            args += status
+        return [dict(r) for r in self.db.query(sql + " ORDER BY video_id, start", args)]
 
     # -- faces -------------------------------------------------------------------------
     @staticmethod

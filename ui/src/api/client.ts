@@ -1,6 +1,6 @@
 // One function per Marcarr API call. Pages import from here, never fetch directly.
 import type {
-  Activity, ApiKey, AtTime, Collection, CustomTag, CustomTagBody, CutKind, CutRange, TitleCuts, Face, Line, Paged, Person, Place, PlexLibrary, ReviewItem, ReviewQueue,
+  Activity, ApiKey, AtTime, Collection, CustomTag, CustomTagBody, CutKind, CutRange, TitleCuts, Face, Line, Paged, Person, Place, PlexLibrary, ReviewItem, ReviewQueue, CharacterGraph,
   Scene, SceneDetail, SceneHit, Settings, Signal, Status, Step, Tag, Title, TitleSummary, Video,
   Vocab, Webhook, WebhookCall,
 } from './types';
@@ -86,6 +86,8 @@ export const api = {
   titles: (q: { type?: string; analysed?: boolean; q?: string; filter?: string; page?: number; per_page?: number; parent?: string; season?: number } = {}) =>
     get<Paged<TitleSummary> & { counts: Record<string, number> }>('/titles', q),
   title: (id: string) => get<Title>(`/titles/${enc(id)}`),
+  graph: (id: string, q: { video?: string; through?: number | null } = {}) =>
+    get<CharacterGraph>(`/titles/${enc(id)}/graph`, { video: q.video, through: q.through ?? undefined }),
   runTitle: (id: string, steps?: Step[]) => post<{ queued: number }>(`/titles/${enc(id)}/run`, { steps }),
   cuts: (id: string) => get<TitleCuts>(`/titles/${enc(id)}/cuts`),
   markCut: (id: string, body: { edition: string; base?: string; kind?: CutKind; video?: string | null; start?: number | null; end?: number | null; note?: string }) =>
@@ -100,6 +102,7 @@ export const api = {
   scenes: (video: string, q: { from?: number; to?: number; tag?: string; review?: boolean } = {}) =>
     get<Paged<Scene>>(`/videos/${video}/scenes`, q),
   scene: (video: string, n: number) => get<SceneDetail>(`/videos/${video}/scenes/${n}`),
+  sceneBrief: (video: string, n: number, link?: string) => get<{ text: string }>(`/videos/${video}/scenes/${n}/brief`, { link }),
   moveScene: (video: string, n: number, body: { start?: number; end?: number; snap?: boolean }) =>
     patch<SceneDetail>(`/videos/${video}/scenes/${n}`, body),
   at: (video: string, t: number) => get<AtTime>(`/videos/${video}/at/${t}`),

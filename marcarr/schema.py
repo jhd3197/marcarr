@@ -261,6 +261,31 @@ def _v3() -> str:
 
 
 def _v4() -> str:
+    # How a character is in a scene. A tag's `people` are the ones seen on screen and
+    # its `mentioned` the ones only named in the dialogue. `presence` holds the rest:
+    # what apps and people report outside a tag (a speaker Doblarr found, a name
+    # someone heard), each with its source and the moment that shows it.
+    return """
+        ALTER TABLE tags ADD COLUMN mentioned TEXT NOT NULL DEFAULT '[]';
+        CREATE TABLE presence (
+            id         TEXT PRIMARY KEY,       -- pre_<hex>
+            video_id   TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+            person_id  TEXT NOT NULL,
+            start      REAL NOT NULL,
+            end        REAL NOT NULL,
+            how        TEXT NOT NULL,          -- seen | mentioned | speaker
+            at         REAL,                   -- the moment that shows it
+            source     TEXT NOT NULL,          -- person | doblarr | fanscut | mcp | ai:<model>
+            status     TEXT NOT NULL,          -- proposed | accepted | rejected
+            note       TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX presence_video ON presence (video_id, start);
+        CREATE INDEX presence_person ON presence (person_id);
+    """
+
+
+def _v5() -> str:
     # Versions and cuts. A Plex item can hold several files (an Extended and a
     # Theatrical, or two encodes of one cut): each is a video, ``current`` stays the
     # one the library analyses and ``in_plex`` says Plex still lists it.
@@ -313,4 +338,4 @@ def _v4() -> str:
     """
 
 
-MIGRATIONS: list[Callable[[], str]] = [_v1, _v2, _v3, _v4]
+MIGRATIONS: list[Callable[[], str]] = [_v1, _v2, _v3, _v4, _v5]
