@@ -222,7 +222,8 @@ def activity(filter: str = "all") -> dict[str, Any]:
             running = {"video": vid["id"], "title_name": name, "step": step,
                        "step_index": STEPS.index(step) + 1, "progress": p, "eta_seconds": eta}
     kinds = {"all": lambda r: True, "running": lambda r: r["state"]["kind"] == "run",
-             "waiting": lambda r: r["state"]["kind"] in ("queued", "notrun", "rerun"),
+             "waiting": lambda r: r["state"]["kind"] == "queued",
+             "notstarted": lambda r: r["state"]["kind"] in ("notrun", "rerun"),
              "failed": lambda r: r["state"]["kind"] == "failed",
              "done": lambda r: r["state"]["kind"] == "done"}
     counts = {k: sum(1 for r in rows if f(r)) for k, f in kinds.items()}
