@@ -72,4 +72,7 @@ html,body,#root{min-height:100%}
 .loading{padding:40px 0;color:var(--faint);font-size:13px}
 .err-box{padding:14px 16px;border:1px solid var(--bad);border-radius:10px;color:var(--bad);font-size:13px}
 .empty{padding:28px 20px;border:1px dashed var(--border);border-radius:12px;font-size:14px;color:var(--dim)}
+.seg{display:inline-flex;padding:3px;border-radius:9px;background:var(--raised)}
+.seg button{height:28px;padding:0 12px;border:0;border-radius:7px;background:transparent;color:var(--dim);font:600 12.5px 'DM Sans',sans-serif;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--text)}
 @media (max-width:760px){.side{position:static;height:auto}}

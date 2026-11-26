@@ -1,46 +1,43 @@
-"""An MCP server that lets an AI client (Claude Code, Claude Desktop, ...) tag films.
+"""An MCP server that lets an AI client (Claude Code, Claude Desktop, ...) ask
+Marcarr what is in a film and propose tags.
 
-It talks to the running FansCut web app over its REST API, so tags, jobs and
-caches stay in one place, and it can only do what the API allows. The tools are
-plain functions turned into Prompture tool definitions and served with
-``prompture.mcp``.
+It talks to the running Marcarr over its REST API (so it can only do what the
+API allows, and a key limits it further). The tools are plain functions turned
+into Prompture tool definitions and served with ``prompture.mcp``.
 
-Run it with ``fanscut mcp`` (stdio). Point it at another FansCut with
-``--url`` or ``FANSCUT_URL``. Typical session for "Christmas at Hogwarts":
-
-1. ``list_films(collection="Harry Potter")`` and ``index_film`` where needed.
-2. ``read_dialogue`` in chunks; note the stretches that sound like Christmas.
-3. ``look`` at each stretch (a labelled frame grid) to confirm and tighten it.
-4. ``propose_scene`` for each hit; a person accepts them in the tagger.
-5. ``make_timeline(collection, "christmas")`` once they are accepted.
+Run it with ``marcarr mcp`` (stdio). ``MARCARR_URL`` / ``--url`` points it at
+another Marcarr; ``MARCARR_KEY`` sends an API key (give it read and propose).
+Every tag it adds is a proposal: a person keeps or drops it on the Review page.
 """
 
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
 from typing import Any
 
 import httpx
 
-DEFAULT_URL = "http://127.0.0.1:6464"
+DEFAULT_URL = "http://127.0.0.1:7470"
 MAX_TEXT = 20_000
 _client: httpx.Client | None = None
 
 
 def base_url() -> str:
-    return os.environ.get("FANSCUT_URL", DEFAULT_URL).rstrip("/")
+    return os.environ.get("MARCARR_URL", DEFAULT_URL).rstrip("/")
 
 
 def _http() -> httpx.Client:
     global _client
     if _client is None:
-        _client = httpx.Client(base_url=base_url(), timeout=600)
+        headers = {"X-Marcarr-Client": "mcp"}
+        if os.environ.get("MARCARR_KEY"):
+            headers["X-Api-Key"] = os.environ["MARCARR_KEY"]
+        _client = httpx.Client(base_url=base_url() + "/api/v1", timeout=120, headers=headers)
     return _client
 
 
 def use_client(client: httpx.Client) -> None:
-    """Send requests through *client* (tests, or a custom transport)."""
+    """Send requests through *client* (tests)."""
     global _client
     _client = client
 
@@ -52,15 +49,13 @@ def _call(method: str, path: str, **kw: Any) -> Any:
             detail = r.json().get("detail")
         except ValueError:
             detail = r.text[:300]
-        raise RuntimeError(f"FansCut said {r.status_code}: {detail}")
+        raise RuntimeError(f"Marcarr said {r.status_code}: {detail}")
     if r.status_code == 204 or not r.content:
         return None
-    ctype = r.headers.get("content-type", "")
-    return r.json() if "json" in ctype else r
+    return r.json() if "json" in r.headers.get("content-type", "") else r
 
 
 def _image(data: bytes) -> Any:
-    """An MCP image result (FastMCP in mcp 1.x, MCPServer in 2.x)."""
     import importlib
 
     try:
@@ -76,375 +71,141 @@ def _clock(t: float) -> str:
 
 
 def _cut(text: str) -> str:
-    if len(text) > MAX_TEXT:
-        return text[:MAX_TEXT] + f"\n[cut at {MAX_TEXT} characters: ask for a shorter range]"
-    return text
+    return text if len(text) <= MAX_TEXT else text[:MAX_TEXT] + "\n[cut: ask for less]"
 
 
-def _tag_line(t: dict[str, Any]) -> str:
-    who = ", ".join(p.get("character") or p.get("name", "") for p in t["people"])
-    parts = [
-        f"{t['id']} {_clock(t['start'])}-{_clock(t['end'])} [{t['status']}] {' '.join(t['tags'])}"
-    ]
-    if who:
-        parts.append(who)
-    if t["summary"]:
-        parts.append(t["summary"])
-    return " | ".join(parts)
+def _scene_line(s: dict[str, Any], title: str = "") -> str:
+    tags = ", ".join(f"{t['name']}{'?' if t['status'] == 'proposed' else ''}" for t in s["tags"])
+    head = f"{title} " if title else ""
+    return (f"{head}scene {s.get('scene', s.get('n'))} {_clock(s['start'])}-{_clock(s['end'])}"
+            f" [{tags or 'no tags'}] {s.get('summary') or ''}").strip()
 
 
 # -- tools ---------------------------------------------------------------------------
-def list_films(collection: str = "") -> str:
-    """List the films in the library (optionally one Plex collection).
+def list_titles(q: str = "") -> str:
+    """Films and shows Marcarr knows, with their video id once analysed.
 
     Args:
-        collection: A collection name such as "Harry Potter", or "" for every film.
-
-    Returns:
-        One film per line: key, title (year), whether it has a scene index, tag counts.
+        q: part of the name (empty for all).
     """
-    films = _call(
-        "GET", "/api/scenes/films", params={"collection": collection} if collection else None
-    )
-    rows = [
-        f"{f['key']} | {f['title']} ({f['year'] or '?'}) | "
-        f"{'indexed' if f['indexed'] else 'not indexed'} | "
-        f"{f['tags']['accepted']} accepted, {f['tags']['proposed']} proposed"
-        for f in films["films"]
-    ]
-    return "\n".join(rows) or "No films."
+    data = _call("GET", "/titles", params={"q": q, "per_page": 200})
+    rows = [f"{t['id']} | {t['name']} ({t['year'] or '?'}) | {t['state']['text']}"
+            + (f" | video {t['video_id']}" if t.get("video_id") else "") for t in data["items"]]
+    return "\n".join(rows) or "nothing found"
 
 
-def film_overview(key: str) -> str:
-    """The scene index of one film: duration, subtitles, automatic scenes, tags and cast.
+def find_scenes(tags: str = "", person: str = "", q: str = "", include_proposed: bool = False) -> str:
+    """Find scenes across the library by tags (all must match), a person, or words said.
 
     Args:
-        key: Film key from list_films.
-
-    Returns:
-        A text overview. Automatic scenes show their time range and first line of dialogue.
+        tags: comma-separated tag names, like "Christmas,Snow".
+        person: a person id, like "ron-weasley".
+        q: words in the dialogue.
+        include_proposed: also count tags nobody has reviewed yet.
     """
-    d = _call("GET", "/api/scenes/film", params={"key": key, "lines": "true"})
-    f, doc = d["film"], d["index"]
-    out = [f"{f['title']} ({f['year'] or '?'}) key={f['key']}"]
-    if not doc:
-        out.append("Not indexed yet: call index_film first.")
-        return "\n".join(out)
-    sub = doc["subtitles"]
-    out.append(
-        f"Duration {_clock(doc['duration'] or 0)}; {len(doc['shots'])} shots; "
-        f"{len(doc['scenes'])} scenes; subtitles: {sub['kind']} ({sub['lines']} lines)"
-    )
-    if d["cast"]:
-        out.append("Cast: " + "; ".join(f"{c['character']} ({c['name']})" for c in d["cast"][:20]))
-    lines = doc.get("lines") or []
-    out.append("\nScenes:")
-    for sc in doc["scenes"]:
-        first = next((ln["text"] for ln in lines if sc["start"] <= ln["start"] < sc["end"]), "")
-        out.append(f"{_clock(sc['start'])}-{_clock(sc['end'])} {first[:80]}")
-    if d["tags"]:
-        out.append("\nTags:")
-        out += [_tag_line(t) for t in d["tags"]]
+    data = _call("GET", "/search/scenes", params={
+        "tags": tags, "person": person or None, "q": q, "status": "proposed" if include_proposed else "accepted"})
+    rows = [f"video {h['video']} " + _scene_line(h, h["title_name"]) + (f' "{h["line"]}"' if h.get("line") else "")
+            for h in data["items"]]
+    return _cut("\n".join(rows) or "no scene matches")
+
+
+def whats_at(video: str, seconds: float) -> str:
+    """What is on screen at a time: scene, people, tags, place and measured signals.
+
+    Args:
+        video: the video id.
+        seconds: time in the video.
+    """
+    d = _call("GET", f"/videos/{video}/at/{seconds}")
+    tags = ", ".join(f"{t['name']}{'?' if t['status'] == 'proposed' else ''}" for t in d["tags"])
+    return (f"{_clock(d['t'])}: scene {d['scene']}; people {', '.join(d['people']) or '-'}; tags {tags or '-'};"
+            f" place {d['place'] or '-'}; signals {', '.join(d['signals']) or '-'}")
+
+
+def get_scene(video: str, scene: int) -> str:
+    """One scene with its tags (and why), people and dialogue.
+
+    Args:
+        video: the video id.
+        scene: the scene number.
+    """
+    d = _call("GET", f"/videos/{video}/scenes/{scene}")
+    out = [_scene_line(d, d["title"]["name"]), f"people: {', '.join(d['people']) or '-'}"]
+    for t in d["all_tags"]:
+        ev = "; ".join(f"{k}: {', '.join(v)}" for k, v in t["evidence"].items() if v)
+        out.append(f"  {t['id']} {t['name']} [{t['status']}, {t['source']}] {ev}")
+    out += [f"  {_clock(ln['start'])} {ln['text']}" for ln in d["lines"]]
     return _cut("\n".join(out))
 
 
-def index_film(key: str, transcribe: bool = False) -> str:
-    """Start indexing a film (camera cuts, subtitle lines, automatic scenes) as a background job.
+def read_dialogue(video: str, start: float = 0, end: float = 0) -> str:
+    """The subtitle lines of a video between two times (seconds; end 0 = to the end).
 
     Args:
-        key: Film key from list_films.
-        transcribe: When the film has no text subtitles, transcribe its audio (needs an STT key).
-
-    Returns:
-        The job id; poll it with job_status.
+        video: the video id.
+        start: from (seconds).
+        end: to (seconds), 0 for the end.
     """
-    job = _call("POST", "/api/scenes/index", json={"key": key, "transcribe": transcribe})
-    return f"Started job {job['id']}. A 2-hour film takes a few minutes; check job_status."
+    d = _call("GET", f"/videos/{video}/lines", params={"from": start, "to": end or None})
+    return _cut("\n".join(f"{_clock(x['start'])} {x['text']}" for x in d["items"]) or "no lines")
 
 
-def job_status(job_id: str) -> str:
-    """Status of a background job (indexing, AI tagging).
+def look(video: str, seconds: float) -> list[Any]:
+    """A frame of the video at a time, to see what is there.
 
     Args:
-        job_id: The id returned when the job started.
+        video: the video id.
+        seconds: time in the video.
     """
-    j = _call("GET", f"/api/jobs/{job_id}")
-    msg = f"{j['kind']}: {j['status']} {round((j.get('progress') or 0) * 100)}%"
-    if j.get("message"):
-        msg += f" ({j['message']})"
-    if j.get("error"):
-        msg += f"\nError: {j['error']}"
-    if j.get("result"):
-        msg += f"\nResult: {j['result']}"
-    return msg
+    r = _call("GET", f"/videos/{video}/frame.jpg", params={"t": seconds, "h": 480})
+    return [_image(r.content)]
 
 
-def read_dialogue(key: str, start: float = 0, end: float = 0) -> str:
-    """Timed subtitle lines of a film, as "[h:mm:ss] text", for a range in seconds.
+def list_tags(family: str = "") -> str:
+    """The tag list Marcarr uses (tags are named from it).
 
     Args:
-        key: Film key.
-        start: Start in seconds.
-        end: End in seconds (0 = the end of the film). Ask for 10-20 minutes at a time.
+        family: only one family (Place, Action, Beat, Mood, Occasion, Weather, People, Creature, Content, Element).
     """
-    params: dict[str, Any] = {"key": key, "start": start}
-    if end:
-        params["end"] = end
-    lines = _call("GET", "/api/scenes/transcript", params=params)["lines"]
-    return (
-        _cut("\n".join(f"[{_clock(ln['start'])}] {ln['text']}" for ln in lines))
-        or "No dialogue here."
-    )
+    d = _call("GET", "/tags", params={"family": family or None})
+    return "\n".join(f"[{f['name']}] " + ", ".join(t["name"] for t in f["tags"]) for f in d["families"])
 
 
-def look(key: str, start: float, end: float, cols: int = 3, rows: int = 2) -> list[Any]:
-    """Look at a stretch of a film: frames spread over the range in one labelled grid.
-
-    Each tile shows its number and time (h:mm:ss). Use it to confirm what happens,
-    where it is and who is on screen, and to find where a scene starts and ends.
+def propose_tag(video: str, tag: str, start: float, end: float, seen: str = "", heard: str = "",
+                people: str = "") -> str:
+    """Propose a tag over a stretch of a video; a person reviews it.
 
     Args:
-        key: Film key.
-        start: Start in seconds.
-        end: End in seconds.
-        cols: Tiles per row (up to 6).
-        rows: Rows (up to 6). A 3x2 grid over a 1-3 minute stretch reads well.
+        video: the video id.
+        tag: a tag name from the tag list, like "Snow".
+        start: where it starts (seconds).
+        end: where it ends (seconds).
+        seen: what you saw that shows it, comma-separated.
+        heard: what was said that shows it, comma-separated.
+        people: person ids in it, comma-separated.
     """
-    r = _call(
-        "GET",
-        "/api/scenes/sheet",
-        params={"key": key, "start": start, "end": end, "cols": cols, "rows": rows},
-    )
-    times = [float(x) for x in r.headers.get("x-tile-times", "").split(",") if x]
-    legend = " | ".join(f"#{i + 1} {_clock(t)} ({t:.1f}s)" for i, t in enumerate(times))
-    return [f"Tiles: {legend}", _image(r.content)]
+    split = lambda s: [x.strip() for x in s.split(",") if x.strip()]  # noqa: E731
+    t = _call("POST", f"/videos/{video}/tags", json={
+        "tag": tag, "start": start, "end": end, "status": "proposed",
+        "evidence": {"seen": split(seen), "heard": split(heard)}, "people": split(people)})
+    return f"proposed {t['id']} {t['name']} {_clock(t['start'])}-{_clock(t['end'])}: waiting for review"
 
 
-def frame(key: str, t: float) -> list[Any]:
-    """One frame of a film at t seconds.
-
-    Args:
-        key: Film key.
-        t: Time in seconds.
-    """
-    r = _call("GET", "/api/scenes/frame", params={"key": key, "t": t, "height": 480})
-    return [f"Frame at {_clock(t)}", _image(r.content)]
-
-
-def camera_cuts(key: str, start: float, end: float) -> str:
-    """The shots (camera cuts) inside a range, to set scene edges exactly.
-
-    Args:
-        key: Film key.
-        start: Start in seconds.
-        end: End in seconds.
-    """
-    shots = _call("GET", "/api/scenes/shots", params={"key": key, "start": start, "end": end})[
-        "shots"
-    ]
-    return "\n".join(f"{a:.2f}-{b:.2f}" for a, b in shots) or "No shots here."
-
-
-def cast(key: str) -> str:
-    """The cast of a film: character (actor), in billing order.
-
-    Args:
-        key: Film key.
-    """
-    people = _call("GET", "/api/scenes/cast", params={"key": key})["cast"]
-    return "\n".join(f"{c['character']} ({c['name']})" for c in people) or "No cast known."
-
-
-def propose_scene(
-    key: str,
-    start: float,
-    end: float,
-    tags: list[str],
-    people: list[str] | None = None,
-    summary: str = "",
-    confidence: float = 0.7,
-) -> str:
-    """Propose a tagged scene. A person accepts or rejects it in the FansCut tagger.
-
-    Edges snap to the nearest camera cut within 3 seconds.
-
-    Args:
-        key: Film key.
-        start: Start in seconds.
-        end: End in seconds.
-        tags: Short tags such as ["christmas", "great-hall"].
-        people: Characters in the scene, by name ("Harry", "Ron"). Matched to the cast.
-        summary: One plain sentence about what happens.
-        confidence: 0-1, how sure you are.
-    """
-    t = _call(
-        "POST",
-        "/api/scenes/tags",
-        json={
-            "key": key,
-            "start": start,
-            "end": end,
-            "tags": tags,
-            "people": people or [],
-            "summary": summary,
-            "status": "proposed",
-            "source": "mcp",
-            "confidence": confidence,
-        },
-    )
-    return "Proposed: " + _tag_line(t)
-
-
-def list_tags(key: str = "", tag: str = "", status: str = "") -> str:
-    """Tagged scenes, filtered by film, tag and status (proposed, accepted, rejected).
-
-    Args:
-        key: Film key, or "" for every film.
-        tag: A tag, or "" for all.
-        status: proposed, accepted, rejected, or "" for all.
-    """
-    params = {k: v for k, v in (("key", key), ("tag", tag), ("status", status)) if v}
-    tags = _call("GET", "/api/scenes/tags", params=params)["tags"]
-    return "\n".join(f"{t['film_key']} {_tag_line(t)}" for t in tags) or "No tags."
-
-
-def update_scene(
-    tag_id: str,
-    start: float = -1,
-    end: float = -1,
-    tags: list[str] | None = None,
-    people: list[str] | None = None,
-    summary: str | None = None,
-    status: str = "",
-) -> str:
-    """Change a tagged scene: its range, tags, people, summary or status.
-
-    Args:
-        tag_id: The id shown by list_tags or propose_scene.
-        start: New start in seconds (-1 keeps it).
-        end: New end in seconds (-1 keeps it).
-        tags: New tag list (omit to keep).
-        people: New people list (omit to keep).
-        summary: New summary (omit to keep).
-        status: proposed, accepted or rejected ("" keeps it). Leave accepting to the person
-            unless they asked you to.
-    """
-    body: dict[str, Any] = {}
-    if start >= 0:
-        body["start"] = start
-    if end >= 0:
-        body["end"] = end
-    if tags is not None:
-        body["tags"] = tags
-    if people is not None:
-        body["people"] = people
-    if summary is not None:
-        body["summary"] = summary
-    if status:
-        body["status"] = status
-    return "Updated: " + _tag_line(_call("PATCH", f"/api/scenes/tags/{tag_id}", json=body))
-
-
-def run_ai_tagging(
-    key: str, tag: str, description: str = "", verify: bool = True, sweep: bool = False
-) -> str:
-    """Run FansCut's own AI tagging job on a film (its configured models do the work).
-
-    Args:
-        key: Film key (must be indexed).
-        tag: The tag to look for, e.g. "christmas".
-        description: What the tag means, e.g. "Christmas at Hogwarts: snow, presents, the feast".
-        verify: Check each candidate on a frame grid with the vision model.
-        sweep: Also look at scenes with no dialogue (one frame grid each; slower).
-    """
-    job = _call(
-        "POST",
-        "/api/scenes/ai",
-        json={"key": key, "tag": tag, "description": description, "verify": verify, "sweep": sweep},
-    )
-    return f"Started job {job['id']}; check job_status."
-
-
-def collection_tags(name: str, tag: str = "") -> str:
-    """Tagged scenes across a collection, film by film, plus the tags in use.
-
-    Args:
-        name: Collection name, e.g. "Harry Potter".
-        tag: Only this tag ("" for all).
-    """
-    d = _call(
-        "GET", "/api/scenes/collection", params={"name": name, **({"tag": tag} if tag else {})}
-    )
-    out = ["Tags: " + ", ".join(f"{t['tag']} ({t['count']})" for t in d["tags"])]
-    for f in d["films"]:
-        out.append(
-            f"\n{f['title']} ({f['year'] or '?'}) key={f['key']}"
-            f"{'' if f['indexed'] else ' [not indexed]'}"
-        )
-        out += [f"  {_tag_line(t)}" for t in f["scenes"]]
-    return _cut("\n".join(out))
-
-
-def make_timeline(
-    collection: str, tag: str, title: str = "", films: list[str] | None = None
-) -> str:
-    """Turn the accepted scenes with a tag across a collection into a FansCut timeline cut.
-
-    Args:
-        collection: Collection name (also names the cut).
-        tag: The tag, e.g. "christmas".
-        title: Title of the cut (default "<collection>: <tag>").
-        films: Film keys to use instead of the collection's films, for a franchise
-            whose films aren't all in one Plex collection.
-    """
-    t = _call(
-        "POST",
-        "/api/scenes/to-timeline",
-        json={"collection": collection, "tag": tag, "title": title, "films": films},
-    )
-    return f'Created timeline {t["id"]} "{t["title"]}". Open it in FansCut to sync and render.'
-
-
-TOOLS: list[Callable[..., Any]] = [
-    list_films,
-    film_overview,
-    index_film,
-    job_status,
-    read_dialogue,
-    look,
-    frame,
-    camera_cuts,
-    cast,
-    propose_scene,
-    list_tags,
-    update_scene,
-    run_ai_tagging,
-    collection_tags,
-    make_timeline,
-]
+TOOLS = [list_titles, find_scenes, whats_at, get_scene, read_dialogue, look, list_tags, propose_tag]
 
 
 def tool_definitions() -> list[Any]:
     from prompture.agents.tools_schema import tool_from_function
 
-    images = {look, frame}  # return content blocks, not JSON
-    return [
-        tool_from_function(
-            fn,
-            name=fn.__name__,
-            metadata={
-                "category": "fanscut",
-                **({"structured_output": False} if fn in images else {}),
-            },
-        )
-        for fn in TOOLS
-    ]
+    return [tool_from_function(fn, name=fn.__name__, metadata={
+        "category": "marcarr", **({"structured_output": False} if fn is look else {})}) for fn in TOOLS]
 
 
 def serve(url: str | None = None) -> None:
     """Run the MCP server on stdio (blocking)."""
     if url:
-        os.environ["FANSCUT_URL"] = url
+        os.environ["MARCARR_URL"] = url
     from prompture.mcp.server import serve as prompture_serve
 
-    prompture_serve(name="fanscut", tools=tool_definitions(), transport="stdio")
+    prompture_serve(name="marcarr", tools=tool_definitions(), transport="stdio")

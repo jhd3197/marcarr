@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 
-class FansCutError(Exception):
+class MarcarrError(Exception):
     """Base for every error FansCut raises on purpose."""
 
 
-class ConfigError(FansCutError):
+class ConfigError(MarcarrError):
     pass
 
 
-class NotFoundError(FansCutError):
+class NotFoundError(MarcarrError):
     pass
 
 
-class ClientError(FansCutError):
+class ClientError(MarcarrError):
     """A remote service (Sonarr, Plex, a catalogue) failed or refused."""
 
     def __init__(self, message: str, status: int | None = None, retry_after: str | None = None):
@@ -24,9 +24,9 @@ class ClientError(FansCutError):
         self.retry_after = retry_after
 
 
-class FFmpegError(FansCutError):
+class FFmpegError(MarcarrError):
     pass
 
 
-class JobCancelled(FansCutError):
+class JobCancelled(MarcarrError):
     pass

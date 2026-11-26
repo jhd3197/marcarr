@@ -1,0 +1,10 @@
+/* docs/design/scene/page.css, scoped to the scene page */
+.pg-scene .cs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.pg-scene .cs span{position:relative;display:block;aspect-ratio:2.4/1;border-radius:6px;background-color:#000;overflow:hidden;cursor:pointer}
+.pg-scene .cs i{position:absolute;left:6px;bottom:6px;padding:1px 6px;border-radius:4px;background:rgba(16,19,23,.8);color:#f7f6ef;font:400 11px 'DM Mono',monospace;font-style:normal}
+.pg-scene .tr{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 12px;padding:12px 0;border-top:1px solid var(--line)}
+.pg-scene .tr:first-child{border-top:0}
+.pg-scene .ev{font-size:12.5px;color:var(--dim)}
+.pg-scene .ev b{font-weight:600;color:var(--faint);text-transform:uppercase;font-size:10.5px;letter-spacing:.06em;margin-right:6px}
+.pg-scene .dl{display:flex;gap:12px;padding:5px 0;font-size:14px;line-height:1.45}
+@media (max-width:760px){.pg-scene .cs{grid-template-columns:repeat(2,1fr)}}

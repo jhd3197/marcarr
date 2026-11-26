@@ -1,0 +1,8 @@
+/* docs/design/activity/page.css, scoped to the activity page */
+.pg-activity .ar{display:grid;grid-template-columns:minmax(220px,1.3fr) repeat(7,58px) 84px 76px minmax(200px,1fr) auto;align-items:center;column-gap:8px;padding:10px 8px;border-top:1px solid var(--line)}
+.pg-activity .ar.h{border-top:0;padding-top:0;padding-bottom:8px}
+.pg-activity .th{text-align:center;font:500 11px 'DM Mono',ui-monospace,monospace;color:var(--dim);white-space:nowrap}
+.pg-activity .stat{flex:1 1 220px;min-width:0;padding:14px 16px}
+.pg-activity .big{font:600 24px/1.15 'Outfit','DM Sans',sans-serif}
+.pg-activity .rowb{border:0;background:transparent;padding:0;color:var(--text);font:600 14px 'DM Sans',sans-serif;text-align:left;cursor:pointer}
+.pg-activity .st{display:grid;grid-template-columns:100px 150px 90px minmax(150px,1fr) auto;align-items:center;column-gap:12px;padding:6px 0;font-size:13px}

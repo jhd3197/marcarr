@@ -1,6 +1,7 @@
 // Small building blocks that every page shares, drawn as in the design
 // (docs/design/components). Inline styles are copied from the design's logic.
 import type { CSSProperties, ReactNode } from 'react';
+import { Link } from 'react-router';
 import type { Family, StateLine, Step, StepState, TagStatus } from '../api/types';
 import { STEPS } from '../api/types';
 import { initials } from '../lib/format';
@@ -144,7 +145,7 @@ export function Crumbs({ items }: { items: { name: string; href?: string }[] }) 
       {items.map((c, i) => (
         <span key={i} style={{ display: 'inline-flex', gap: 8 }}>
           {i > 0 ? <span aria-hidden="true">/</span> : null}
-          {c.href ? <a href={c.href}>{c.name}</a> : <span>{c.name}</span>}
+          {c.href ? <Link to={c.href}>{c.name}</Link> : <span>{c.name}</span>}
         </span>
       ))}
     </nav>

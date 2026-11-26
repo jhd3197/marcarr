@@ -13,7 +13,7 @@ from typing import Any
 
 import requests
 
-from ..errors import FansCutError
+from ..errors import MarcarrError
 
 TMDB = "https://api.themoviedb.org/3"
 TMDB_IMG = "https://image.tmdb.org/t/p/w185"
@@ -77,7 +77,7 @@ def fetch_tmdb(
         r.raise_for_status()
         return from_tmdb(r.json())
     except requests.RequestException as exc:
-        raise FansCutError(f"TMDB credits failed: {exc.__class__.__name__}") from exc
+        raise MarcarrError(f"TMDB credits failed: {exc.__class__.__name__}") from exc
 
 
 def fetch_keywords(
@@ -95,7 +95,7 @@ def fetch_keywords(
         )
         r.raise_for_status()
     except requests.RequestException as exc:
-        raise FansCutError(f"TMDB keywords failed: {exc.__class__.__name__}") from exc
+        raise MarcarrError(f"TMDB keywords failed: {exc.__class__.__name__}") from exc
     return [str(k.get("name", "")).lower() for k in r.json().get("keywords") or []]
 
 

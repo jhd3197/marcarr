@@ -1,10 +1,11 @@
-"""Job queue in SQLite plus two worker threads.
+"""Job queue in SQLite plus worker threads.
 
 A job is {kind, payload}; handlers are registered per kind and return a result
 dict. Jobs left "running" by a previous process are re-queued at startup.
 
-Two lanes, so a long render does not hold up quick work: "heavy" (renders)
-and "light" (detection, syncs, lookups), one job at a time in each. A job
+Two lanes, so analysing a film does not hold up quick work: "heavy" (analysis,
+as many at once as Settings allows) and "light" (library scans, labels,
+downloads), one at a time. Pausing stops the heavy lane from starting jobs. A job
 whose payload names another job in "after" waits until that one has finished
 (the webhook's render waits for its detection). Submitting a job identical
 to one still queued returns the queued one instead of adding a twin.
@@ -24,10 +25,10 @@ from typing import Any
 from .db import Database, dumps
 from .errors import JobCancelled, NotFoundError
 
-log = logging.getLogger("fanscut.jobs")
+log = logging.getLogger("marcarr.jobs")
 
 ACTIVE = ("queued", "running")
-HEAVY = frozenset({"render", "timeline_render", "scene_index", "scene_signals"})
+HEAVY = frozenset({"analyse"})
 LANES = ("heavy", "light")
 
 
@@ -159,7 +160,10 @@ Finished = Callable[[dict[str, Any]], None]
 
 class Worker:
     def __init__(self, store: JobStore, handlers: dict[str, Handler],
-                 on_finish: Finished | None = None):
+                 on_finish: Finished | None = None, heavy_threads: int = 1):
+        self.heavy_threads = max(1, heavy_threads)
+        self.paused = threading.Event()
+        self._pick = threading.Lock()  # two heavy threads must not take the same job
         self.store = store
         self.handlers = handlers
         self.on_finish = on_finish  # called with the job once it is done or failed
@@ -170,9 +174,10 @@ class Worker:
 
     def start(self) -> None:
         self.store.requeue_running()
+        lanes = ["light"] + ["heavy"] * self.heavy_threads
         self._threads = [threading.Thread(target=self._loop, args=(lane,),
-                                          name=f"fanscut-worker-{lane}", daemon=True)
-                         for lane in LANES]
+                                          name=f"marcarr-worker-{lane}-{i}", daemon=True)
+                         for i, lane in enumerate(lanes)]
         for t in self._threads:
             t.start()
 
@@ -209,6 +214,17 @@ class Worker:
         self.store.delete(jid)
         return fresh
 
+    def pause(self) -> None:
+        self.paused.set()
+
+    def resume(self) -> None:
+        self.paused.clear()
+        for w in self._wakes.values():
+            w.set()
+
+    def running_ids(self) -> list[str]:
+        return list(self._cancels)
+
     def cancel(self, jid: str) -> dict[str, Any]:
         job = self.store.get(jid)
         if job["status"] == "queued":
@@ -221,10 +237,16 @@ class Worker:
         """Run every queued job (of `lane`) on this thread: the loop's body, and what
         tests call directly. With no lane, jobs run in queue order across both."""
         n = 0
-        while (job := self.store.next_queued(lane)) is not None:
+        while True:
+            if lane == "heavy" and self.paused.is_set():
+                return n
+            with self._pick:
+                job = self.store.next_queued(lane)
+                if job is None:
+                    return n
+                self.store.update(job["id"], status="running", progress=0)
             self._run(job)
             n += 1
-        return n
 
     def _loop(self, lane: str) -> None:
         wake = self._wakes[lane]
@@ -240,7 +262,6 @@ class Worker:
     def _run(self, job: dict[str, Any]) -> None:
         jid = job["id"]
         cancel = self._cancels[jid] = threading.Event()
-        self.store.update(jid, status="running", progress=0)
         try:
             result = self.handlers[job["kind"]](job["payload"], JobContext(self.store, jid, cancel))
         except JobCancelled:

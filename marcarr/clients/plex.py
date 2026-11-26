@@ -80,48 +80,28 @@ class PlexClient(BaseClient):
         if resp.status_code >= 400:
             raise ClientError(f"Plex returned HTTP {resp.status_code}", resp.status_code)
 
-    def find_in_section(self, section_key: str, title: str) -> dict[str, Any] | None:
-        """The item in a section with exactly this title (Plex's filter also matches
-        titles that merely contain it, so the reply is checked)."""
-        data = self._get(f"/library/sections/{section_key}/all", {"title": title})
-        items = data["MediaContainer"].get("Metadata", [])
-        want = title.casefold()
-        return next((i for i in items if str(i.get("title", "")).casefold() == want), None)
+    def metadata(self, rating_key: str) -> dict[str, Any]:
+        """One item with its roles, guids, labels and media parts."""
+        items = self._get(f"/library/metadata/{rating_key}", {"includeGuids": 1})[
+            "MediaContainer"].get("Metadata") or [{}]
+        return items[0]
 
-    def _item_uri(self, rating_key: str) -> str:
-        machine = self.identity()["machineIdentifier"]
-        # requests urlencodes params once; do not pre-quote
-        return f"library://{machine}/item//library/metadata/{rating_key}"
+    def section_count(self, section_key: str) -> int | None:
+        data = self._get(f"/library/sections/{section_key}/all",
+                         {"X-Plex-Container-Start": 0, "X-Plex-Container-Size": 0})
+        size = data["MediaContainer"].get("totalSize", data["MediaContainer"].get("size"))
+        return int(size) if size is not None else None
 
-    def create_playlist(self, title: str, rating_keys: list[str]) -> str:
-        """A video playlist of the given items, in order. Returns the playlist id."""
-        if not rating_keys:
-            raise ClientError("a playlist needs at least one item")
-        created = self._request("POST", "/playlists", {
-            "type": "video", "title": title, "smart": 0,
-            "uri": self._item_uri(rating_keys[0])})
-        pid = str(created["MediaContainer"]["Metadata"][0]["ratingKey"])
-        for key in rating_keys[1:]:
-            self._request("PUT", f"/playlists/{pid}/items", {"uri": self._item_uri(key)})
-        return pid
-
-    def collection_id(self, section_key: str, title: str,
-                      first_key: str | None = None) -> str:
-        """The collection's id, creating it if needed."""
-        data = self._get(f"/library/sections/{section_key}/collections", {"title": title})
-        items = data["MediaContainer"].get("Metadata", [])
-        if items:
-            return str(items[0]["ratingKey"])
-        if not first_key:
-            raise ClientError(f"cannot create collection {title!r} without an item")
-        created = self._request("PUT", "/library/collections", {
-            "type": 18, "title": title, "smart": 0, "sectionId": section_key,
-            "uri": self._item_uri(first_key)})
-        return str(created["MediaContainer"]["Metadata"][0]["ratingKey"])
-
-    def add_to_collection(self, collection_id: str, rating_key: str) -> None:
-        self._request("PUT", f"/library/collections/{collection_id}/items",
-                      {"uri": self._item_uri(rating_key)})
+    def set_labels(self, rating_key: str, type_id: int, add: list[str], remove: list[str]
+                   ) -> None:
+        """Add and remove labels on an item, leaving its other labels alone.
+        type_id is Plex's metadata type (1 movie, 2 show, 4 episode)."""
+        params: dict[str, Any] = {"type": type_id, "id": rating_key, "includeExternalMedia": 1}
+        for i, label in enumerate(add):
+            params[f"label[{i}].tag.tag"] = label
+        if remove:
+            params["label[].tag.tag-"] = ",".join(remove)
+        self._request("PUT", f"/library/metadata/{rating_key}", params)
 
     def _request(self, method: str, path: str, params: dict[str, Any]) -> Any:
         try:

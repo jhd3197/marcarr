@@ -1,4 +1,4 @@
-"""Shared HTTP base for the Sonarr/Plex clients: session, timeout, retry on transient errors."""
+"""Shared HTTP base for the Plex client: session, timeout, retry on transient errors."""
 
 from __future__ import annotations
 
@@ -8,9 +8,21 @@ from typing import Any
 import requests
 
 from ..errors import ClientError
-from ..net import read_capped
 
 MAX_IMAGE = 20_000_000  # bytes; a bigger "poster" is not one
+
+
+def read_capped(resp: requests.Response, limit: int) -> bytes | None:
+    """The body of a streamed response, or None once it passes `limit` bytes."""
+    declared = resp.headers.get("Content-Length", "")
+    if declared.isdigit() and int(declared) > limit:
+        return None
+    buf = bytearray()
+    for chunk in resp.iter_content(1 << 16):
+        buf += chunk
+        if len(buf) > limit:
+            return None
+    return bytes(buf)
 
 
 class BaseClient:
@@ -77,21 +89,3 @@ class BaseClient:
                     delay = max(delay, float(exc.retry_after))
                 time.sleep(min(delay, self.max_wait))
         raise AssertionError("unreachable")  # pragma: no cover
-
-
-class ArrClient(BaseClient):
-    """What Sonarr and Radarr share: the v3 API key header, status, tags and profiles."""
-
-    def __init__(self, base_url: str, api_key: str, timeout: float = 30):
-        super().__init__(base_url, timeout, {"X-Api-Key": api_key})
-
-    def system_status(self) -> dict[str, Any]:
-        return self._get("/api/v3/system/status")
-
-    def tags(self) -> list[dict[str, Any]]:
-        return [{"id": t.get("id"), "label": t.get("label", "")}
-                for t in self._get("/api/v3/tag") or []]
-
-    def quality_profiles(self) -> list[dict[str, Any]]:
-        return [{"id": q.get("id"), "name": q.get("name", "")}
-                for q in self._get("/api/v3/qualityprofile") or []]

@@ -42,6 +42,10 @@ export interface TitleSummary {
   state: StateLine;
   episodes?: { total: number; analysed: number; seasons: number }; // shows only
   collection: string | null;
+  season: number | null; // episodes
+  episode: number | null;
+  video_id?: string; // id of the current video (movies, episodes)
+  tags?: TagRef[]; // a few kept or proposed tags (episode lists only)
 }
 
 export interface Paged<T> {
@@ -56,6 +60,7 @@ export interface Person {
   character: string;
   photo: string | null;
   titles?: number; // titles they are in
+  franchise?: string | null; // the collection most of their titles share
 }
 
 export interface VideoSummary {
@@ -73,6 +78,7 @@ export interface Title extends TitleSummary {
   season: number | null;
   episode: number | null;
   plex_key: string | null;
+  plex_url: string | null; // opens the title in Plex Web
   tmdb_id: number | null;
   tvdb_id: number | null;
   video: Video | null; // the current video, with its steps
@@ -292,6 +298,7 @@ export interface Status {
   plex: 'connected' | 'not set' | 'failing';
   review: number; // proposed tags in the library
   setup_done: boolean;
+  paused: boolean;
 }
 
 export interface ApiKey {

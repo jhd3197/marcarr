@@ -1,0 +1,15 @@
+services:
+  marcarr:
+    build: .
+    container_name: marcarr
+    ports:
+      - "7470:7470"
+    volumes:
+      - ./config:/config
+      # Mount your media where Plex sees it, or map paths in Settings > Plex.
+      - /path/to/media:/data:ro
+    environment:
+      - MARCARR_PLEX_URL=http://plex:32400
+      # - MARCARR_PLEX_TOKEN=...
+      # - MARCARR_AI_API_KEY=...
+    restart: unless-stopped

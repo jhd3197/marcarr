@@ -1,6 +1,6 @@
 // The sidebar and page frame from the design (every board shares it).
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { NavLink, Outlet } from 'react-router';
+import { Navigate, NavLink, Outlet } from 'react-router';
 import { api } from '../api/client';
 import type { Status } from '../api/types';
 
@@ -74,6 +74,8 @@ const NAV: [string, string, string][] = [
 export function Shell() {
   const { status, theme } = useApp();
   const plex = status?.plex || 'not set';
+  // A new install starts with the first-run wizard.
+  if (status && !status.setup_done) return <Navigate to="/setup" replace />;
   return (
     <div className={'app t-' + theme}>
       <nav className="side" aria-label="Marcarr">

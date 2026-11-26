@@ -1,0 +1,43 @@
+# Marcarr settings. Everything has a default and the Settings page edits this
+# file; secrets may come from the environment instead (MARCARR_PLEX_TOKEN,
+# MARCARR_AI_API_KEY, MARCARR_TMDB_API_KEY).
+server:
+  host: 127.0.0.1
+  port: 7470
+  data_dir: data          # database, caches, face models, log
+  require_key: false      # true: calls from other machines need an API key
+
+plex:
+  url: http://127.0.0.1:32400
+  token: ""
+  libraries: []           # section keys; empty = every movie and show library
+  path_map:               # Plex's path -> the path Marcarr opens
+    - {from: /data/movies, to: /mnt/media/movies}
+
+labels:
+  write: false            # write marcarr:<tag> labels to Plex
+  prefix: "marcarr:"
+  tags: [christmas, halloween, snow, rain]
+
+ai:
+  enabled: false
+  model: ""               # a Prompture model, e.g. claude/claude-sonnet-5-5 or ollama/qwen3-vl:8b
+  vision_model: ""        # looks at contact sheets; empty = model
+  monthly_limit: 10.0     # dollars; the tags step stops past it
+  auto_accept: 1.0        # AI tags at least this sure are kept without review (1 = never)
+
+tags:
+  families_off: []        # e.g. [content, mood]
+  search_closely: [christmas, halloween]
+
+faces:
+  enabled: true           # needs opencv-python-headless and the two models (Settings > Faces)
+
+analysis:
+  at_once: 1              # videos analysed at the same time (1, 2 or 4)
+  on_new: true            # analyse what Plex adds
+  transcribe: false       # no text subtitles: transcribe the audio
+  language: en
+
+catalogues:
+  tmdb_api_key: ""        # cast for films Plex has no roles for

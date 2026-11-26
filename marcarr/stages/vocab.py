@@ -18,7 +18,7 @@ SMART = "fc:"
 
 @cache
 def load() -> dict[str, Any]:
-    raw = resources.files("fanscut.scenes").joinpath("tags_v1.json").read_text(encoding="utf-8")
+    raw = resources.files("marcarr.stages").joinpath("tags_v1.json").read_text(encoding="utf-8")
     return json.loads(raw)
 
 

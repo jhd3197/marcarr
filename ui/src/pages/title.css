@@ -1,0 +1,12 @@
+/* Title page (docs/design/title/page.css), scoped to the page. The design's scene row
+   class .sr is called .srow here: base.css already uses .sr for screen-reader text. */
+.pg-title .lanes{display:flex;gap:10px}
+.pg-title .ll{flex:0 0 104px;display:flex;flex-direction:column;gap:6px}
+.pg-title .lt{flex:1;min-width:0;overflow-x:auto;padding-bottom:6px}
+.pg-title .srow{display:flex;flex-wrap:wrap;gap:10px 16px;padding:12px 0;border-top:1px solid var(--line)}
+.pg-title .sb{flex:none;position:relative;width:132px;aspect-ratio:2.4;padding:0;border:0;border-radius:8px;overflow:hidden;background:#000;cursor:pointer}
+.pg-title .sb>span:first-child{display:block;width:100%;height:100%}
+.pg-title .sp{position:absolute;top:0;right:0;bottom:0;left:0;display:flex;align-items:center;justify-content:center;font:700 11px 'DM Sans',sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#f7f6ef}
+/* Plain-text button that looks like the page's links ("All cast"). */
+.pg-title .linkish{padding:0;border:0;background:none;color:var(--mark);font:inherit;font-size:12.5px;cursor:pointer}
+@media (max-width:760px){.pg-title .ll{flex-basis:74px}}

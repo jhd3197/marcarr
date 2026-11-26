@@ -20,7 +20,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from ..errors import FansCutError
+from ..errors import MarcarrError
 
 ZOO = "https://github.com/opencv/opencv_zoo/raw/main/models"
 DETECT = ("face_detection_yunet_2023mar.onnx", f"{ZOO}/face_detection_yunet")
@@ -50,7 +50,7 @@ def ensure_models(models_dir: Path, session: Any = None) -> tuple[Path, Path]:
         path = models_dir / name
         if not path.is_file():
             if session is None:
-                raise FansCutError(f"face model {name} is missing from {models_dir}")
+                raise MarcarrError(f"face model {name} is missing from {models_dir}")
             r = session.get(f"{base}/{name}", timeout=120)
             r.raise_for_status()
             tmp = path.with_suffix(".part")
@@ -111,7 +111,7 @@ class FaceEngine:
     def read(self, path: Path) -> Any:
         img = self._cv2.imread(str(path))
         if img is None:
-            raise FansCutError(f"could not read {path.name}")
+            raise MarcarrError(f"could not read {path.name}")
         return img
 
 

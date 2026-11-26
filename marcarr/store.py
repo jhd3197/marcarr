@@ -1,0 +1,545 @@
+"""Reads and writes over the database: titles, videos, steps, results, tags,
+faces, people, places. No HTTP and no media here; views.py shapes rows for
+the API and pipeline.py runs the steps."""
+
+from __future__ import annotations
+
+import datetime as _dt
+import json
+import re
+import unicodedata
+import uuid
+from typing import Any
+
+from .db import Database, dumps
+from .errors import MarcarrError, NotFoundError
+
+STEPS = ("shots", "subtitles", "scenes", "signals", "cast", "faces", "tags")
+STATUSES = ("proposed", "accepted", "rejected")
+MAX_SUMMARY = 500
+
+
+def now() -> str:
+    return _dt.datetime.now().isoformat(timespec="seconds")
+
+
+def month_start() -> str:
+    d = _dt.date.today().replace(day=1)
+    return d.isoformat()
+
+
+def slug(text: str) -> str:
+    s = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "-", s).strip("-")[:60]
+
+
+def clean_range(start: Any, end: Any, duration: float | None = None) -> tuple[float, float]:
+    try:
+        a, b = float(start), float(end)
+    except (TypeError, ValueError) as exc:
+        raise MarcarrError("start and end must be seconds") from exc
+    if a < 0 or b <= a:
+        raise MarcarrError("end must be after start, both from 0")
+    if duration and b > duration + 5:
+        raise MarcarrError(f"end {b:.1f}s is past the video's end ({duration:.1f}s)")
+    return round(a, 3), round(b, 3)
+
+
+class Store:
+    def __init__(self, db: Database):
+        self.db = db
+
+    # -- key/value ---------------------------------------------------------------------
+    def kv(self, key: str, default: Any = None) -> Any:
+        row = self.db.one("SELECT value FROM kv WHERE key = ?", (key,))
+        return json.loads(row["value"]) if row else default
+
+    def set_kv(self, key: str, value: Any) -> None:
+        self.db.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (key, dumps(value)))
+
+    # -- titles ------------------------------------------------------------------------
+    def upsert_title(self, t: dict[str, Any]) -> None:
+        cur = self.db.one("SELECT id FROM titles WHERE id = ?", (t["id"],))
+        stamp = now()
+        cols = ("type", "name", "sort_name", "year", "parent_id", "season", "episode", "plex_key",
+                "plex_section", "tmdb_id", "tvdb_id", "imdb_id", "collection", "summary", "poster",
+                "duration", "file")
+        vals = [t.get(c) for c in cols]
+        vals = [v if v is not None or c in ("year", "parent_id", "season", "episode", "plex_key",
+                                            "plex_section", "tmdb_id", "tvdb_id", "imdb_id",
+                                            "collection", "duration") else "" for c, v in zip(cols, vals, strict=True)]
+        if cur is None:
+            self.db.execute(
+                f"INSERT INTO titles (id, {', '.join(cols)}, gone, added_at, updated_at)"  # noqa: S608
+                f" VALUES (?, {', '.join('?' * len(cols))}, 0, ?, ?)",
+                (t["id"], *vals, stamp, stamp))
+        else:
+            self.db.execute(
+                f"UPDATE titles SET {', '.join(c + ' = ?' for c in cols)}, gone = 0,"  # noqa: S608
+                " updated_at = ? WHERE id = ?", (*vals, stamp, t["id"]))
+
+    def title(self, tid: str) -> dict[str, Any]:
+        row = self.db.one("SELECT * FROM titles WHERE id = ?", (tid,))
+        if row is None:
+            raise NotFoundError(f"title {tid} not found")
+        return dict(row)
+
+    def title_or_none(self, tid: str) -> dict[str, Any] | None:
+        row = self.db.one("SELECT * FROM titles WHERE id = ?", (tid,))
+        return dict(row) if row else None
+
+    def titles(self, where: str = "1=1", args: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
+        return [dict(r) for r in self.db.query(
+            f"SELECT * FROM titles WHERE gone = 0 AND {where}"  # noqa: S608
+            " ORDER BY sort_name, year", args)]
+
+    def mark_gone(self, seen: set[str], sections: list[str]) -> int:
+        """Titles of the scanned sections that Plex no longer lists."""
+        if not sections:
+            return 0
+        rows = self.db.query(
+            f"SELECT id FROM titles WHERE gone = 0 AND plex_section IN"  # noqa: S608
+            f" ({','.join('?' * len(sections))})", sections)
+        gone = [r["id"] for r in rows if r["id"] not in seen]
+        for tid in gone:
+            self.db.execute("UPDATE titles SET gone = 1 WHERE id = ?", (tid,))
+        return len(gone)
+
+    # -- videos ------------------------------------------------------------------------
+    def video_at(self, path: str, size: int, mtime: float) -> dict[str, Any] | None:
+        row = self.db.one("SELECT * FROM videos WHERE path = ? AND size = ? AND mtime = ?",
+                          (path, size, mtime))
+        return dict(row) if row else None
+
+    def upsert_video(self, title_id: str, path: str, ident: dict[str, Any], edition: str) -> str:
+        from .identity import video_id
+
+        stamp = now()
+        key = ident["content_key"]
+        row = self.db.one("SELECT id, title_id FROM videos WHERE content_key = ?", (key,))
+        with self.db.transaction():
+            self.db.execute("UPDATE videos SET current = 0 WHERE title_id = ? AND content_key != ?",
+                            (title_id, key))
+            if row is None:
+                vid = video_id(key)
+                while self.db.one("SELECT 1 FROM videos WHERE id = ?", (vid,)):
+                    vid = uuid.uuid4().hex[:8]
+                self.db.execute(
+                    "INSERT INTO videos (id, content_key, title_id, path, edition, size, duration,"
+                    " width, height, streams, mtime, current, first_seen, last_seen)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
+                    (vid, key, title_id, path, edition, ident.get("size"), ident.get("duration"),
+                     ident.get("width"), ident.get("height"), dumps(ident.get("streams") or []),
+                     ident.get("mtime"), stamp, stamp))
+                return vid
+            self.db.execute(
+                "UPDATE videos SET title_id = ?, path = ?, mtime = ?, current = 1, last_seen = ?"
+                " WHERE id = ?", (title_id, path, ident.get("mtime"), stamp, row["id"]))
+            return str(row["id"])
+
+    def touch_video(self, vid: str, title_id: str) -> None:
+        with self.db.transaction():
+            self.db.execute("UPDATE videos SET current = 0 WHERE title_id = ? AND id != ?",
+                            (title_id, vid))
+            self.db.execute("UPDATE videos SET current = 1, title_id = ?, last_seen = ? WHERE id = ?",
+                            (title_id, now(), vid))
+
+    def video(self, vid: str) -> dict[str, Any]:
+        row = self.db.one("SELECT * FROM videos WHERE id = ?", (vid,))
+        if row is None:
+            raise NotFoundError(f"video {vid} not found")
+        d = dict(row)
+        d["streams"] = json.loads(d["streams"] or "[]")
+        return d
+
+    def videos_of(self, title_id: str) -> list[dict[str, Any]]:
+        return [dict(r) for r in self.db.query(
+            "SELECT * FROM videos WHERE title_id = ? ORDER BY current DESC, last_seen DESC",
+            (title_id,))]
+
+    def current_video(self, title_id: str) -> dict[str, Any] | None:
+        row = self.db.one("SELECT * FROM videos WHERE title_id = ? AND current = 1"
+                          " ORDER BY last_seen DESC LIMIT 1", (title_id,))
+        return dict(row) if row else None
+
+    def current_videos(self) -> list[dict[str, Any]]:
+        return [dict(r) for r in self.db.query(
+            "SELECT v.* FROM videos v JOIN titles t ON t.id = v.title_id"
+            " WHERE v.current = 1 AND t.gone = 0 ORDER BY t.sort_name, t.season, t.episode")]
+
+    # -- steps -------------------------------------------------------------------------
+    def step_rows(self, vid: str) -> dict[str, dict[str, Any]]:
+        out = {}
+        for r in self.db.query("SELECT * FROM steps WHERE video_id = ?", (vid,)):
+            d = dict(r)
+            d["inputs"] = json.loads(d["inputs"] or "{}")
+            out[d["step"]] = d
+        return out
+
+    def all_step_rows(self) -> dict[str, dict[str, dict[str, Any]]]:
+        out: dict[str, dict[str, dict[str, Any]]] = {}
+        for r in self.db.query("SELECT * FROM steps"):
+            d = dict(r)
+            d["inputs"] = json.loads(d["inputs"] or "{}")
+            out.setdefault(d["video_id"], {})[d["step"]] = d
+        return out
+
+    def set_step(self, vid: str, step: str, **fields: Any) -> None:
+        if "inputs" in fields:
+            fields["inputs"] = dumps(fields["inputs"])
+        cur = self.db.one("SELECT 1 FROM steps WHERE video_id = ? AND step = ?", (vid, step))
+        if cur is None:
+            fields.setdefault("state", "notrun")
+            cols = ["video_id", "step", *fields]
+            self.db.execute(
+                f"INSERT INTO steps ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",  # noqa: S608
+                (vid, step, *fields.values()))
+        elif fields:
+            self.db.execute(
+                f"UPDATE steps SET {', '.join(k + ' = ?' for k in fields)}"  # noqa: S608
+                " WHERE video_id = ? AND step = ?", (*fields.values(), vid, step))
+
+    # -- results -----------------------------------------------------------------------
+    def result(self, vid: str, step: str) -> dict[str, Any] | None:
+        row = self.db.one("SELECT doc FROM results WHERE video_id = ? AND step = ?", (vid, step))
+        return json.loads(row["doc"]) if row else None
+
+    def save_result(self, vid: str, step: str, doc: dict[str, Any]) -> None:
+        self.db.execute("INSERT OR REPLACE INTO results (video_id, step, doc, updated_at)"
+                        " VALUES (?,?,?,?)", (vid, step, dumps(doc), now()))
+
+    def scene_edits(self, vid: str) -> list[dict[str, Any]]:
+        return [dict(r) for r in self.db.query(
+            "SELECT kind, at FROM scene_edits WHERE video_id = ? ORDER BY at", (vid,))]
+
+    def add_scene_edit(self, vid: str, kind: str, at: float) -> None:
+        self.db.execute("INSERT OR REPLACE INTO scene_edits (video_id, kind, at, created_at)"
+                        " VALUES (?,?,?,?)", (vid, kind, round(at, 3), now()))
+
+    def drop_scene_edits_near(self, vid: str, at: float, within: float = 0.05) -> None:
+        self.db.execute("DELETE FROM scene_edits WHERE video_id = ? AND abs(at - ?) <= ?",
+                        (vid, at, within))
+
+    # -- cast and people ---------------------------------------------------------------
+    def cast(self, title_id: str) -> list[dict[str, Any]]:
+        row = self.db.one("SELECT doc FROM casts WHERE title_id = ?", (title_id,))
+        return json.loads(row["doc"]) if row else []
+
+    def save_cast(self, title_id: str, source: str, cast: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Store a title's cast and make sure each member is a person; returns the
+        entries with their person ids."""
+        out = []
+        stamp = now()
+        for c in cast:
+            pid = slug(c.get("character") or "") or slug(c.get("name") or "")
+            if not pid:
+                continue
+            row = self.db.one("SELECT * FROM people WHERE id = ?", (pid,))
+            if row is None:
+                self.db.execute("INSERT INTO people (id, actor, character, photo, updated_at)"
+                                " VALUES (?,?,?,?,?)",
+                                (pid, c.get("name") or "", c.get("character") or "",
+                                 c.get("photo") or "", stamp))
+            elif not row["photo"] and c.get("photo"):
+                self.db.execute("UPDATE people SET photo = ? WHERE id = ?", (c["photo"], pid))
+            out.append({"person": pid, "actor": c.get("name") or "",
+                        "character": c.get("character") or "", "photo": c.get("photo") or "",
+                        "order": c.get("order", len(out))})
+        self.db.execute("INSERT OR REPLACE INTO casts (title_id, source, doc, updated_at)"
+                        " VALUES (?,?,?,?)", (title_id, source, dumps(out), stamp))
+        return out
+
+    def person(self, pid: str) -> dict[str, Any]:
+        row = self.db.one("SELECT * FROM people WHERE id = ?", (pid,))
+        if row is None:
+            raise NotFoundError(f"person {pid} not found")
+        return dict(row)
+
+    def people(self, ids: list[str] | None = None) -> dict[str, dict[str, Any]]:
+        if ids is not None:
+            if not ids:
+                return {}
+            rows = self.db.query(f"SELECT * FROM people WHERE id IN ({','.join('?' * len(ids))})",  # noqa: S608
+                                 ids)
+        else:
+            rows = self.db.query("SELECT * FROM people ORDER BY character, actor")
+        return {r["id"]: dict(r) for r in rows}
+
+    def titles_with_person(self, pid: str) -> list[str]:
+        out = []
+        for r in self.db.query("SELECT title_id, doc FROM casts"):
+            if any(c.get("person") == pid for c in json.loads(r["doc"])):
+                out.append(r["title_id"])
+        return out
+
+    # -- tags --------------------------------------------------------------------------
+    @staticmethod
+    def _tag(r: Any) -> dict[str, Any]:
+        d = dict(r)
+        d["people"] = json.loads(d["people"] or "[]")
+        ev = json.loads(d["evidence"] or "{}")
+        d["evidence"] = {"heard": list(ev.get("heard") or []), "seen": list(ev.get("seen") or [])}
+        return d
+
+    def add_tag(self, vid: str, title_id: str, tag: str, start: float, end: float, *,
+                status: str = "proposed", source: str = "person", confidence: float | None = None,
+                people: list[str] | None = None, evidence: dict[str, list[str]] | None = None,
+                summary: str = "") -> dict[str, Any]:
+        if status not in STATUSES:
+            raise MarcarrError(f"status must be one of {', '.join(STATUSES)}")
+        tid = "tag_" + uuid.uuid4().hex[:10]
+        stamp = now()
+        ev = evidence or {}
+        self.db.execute(
+            "INSERT INTO tags (id, video_id, title_id, tag, start, end, status, source, confidence,"
+            " people, evidence, summary, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (tid, vid, title_id, tag, start, end, status, source[:80], confidence,
+             dumps(list(dict.fromkeys(people or []))[:40]),
+             dumps({"heard": [str(x)[:60] for x in ev.get("heard") or []][:12],
+                    "seen": [str(x)[:60] for x in ev.get("seen") or []][:12]}),
+             (summary or "")[:MAX_SUMMARY], stamp, stamp))
+        return self.tag(tid)
+
+    def tag(self, tid: str) -> dict[str, Any]:
+        r = self.db.one("SELECT * FROM tags WHERE id = ?", (tid,))
+        if r is None:
+            raise NotFoundError(f"tag {tid} not found")
+        return self._tag(r)
+
+    def update_tag(self, tid: str, **fields: Any) -> dict[str, Any]:
+        self.tag(tid)
+        if "people" in fields:
+            fields["people"] = dumps(fields["people"])
+        if "evidence" in fields:
+            fields["evidence"] = dumps(fields["evidence"])
+        if "status" in fields and fields["status"] not in STATUSES:
+            raise MarcarrError(f"status must be one of {', '.join(STATUSES)}")
+        fields["updated_at"] = now()
+        self.db.execute(f"UPDATE tags SET {', '.join(k + ' = ?' for k in fields)} WHERE id = ?",  # noqa: S608
+                        (*fields.values(), tid))
+        return self.tag(tid)
+
+    def delete_tag(self, tid: str) -> None:
+        self.tag(tid)
+        self.db.execute("DELETE FROM tags WHERE id = ?", (tid,))
+
+    def tags(self, *, video: str | None = None, videos: list[str] | None = None,
+             title: str | None = None, status: str | list[str] | None = None,
+             tag: str | list[str] | None = None, source: str | None = None,
+             start: float | None = None, end: float | None = None) -> list[dict[str, Any]]:
+        sql, args = "SELECT * FROM tags WHERE 1=1", []
+        if video:
+            sql += " AND video_id = ?"
+            args.append(video)
+        if videos is not None:
+            if not videos:
+                return []
+            sql += f" AND video_id IN ({','.join('?' * len(videos))})"
+            args += videos
+        if title:
+            sql += " AND title_id = ?"
+            args.append(title)
+        if status:
+            sts = [status] if isinstance(status, str) else status
+            sql += f" AND status IN ({','.join('?' * len(sts))})"
+            args += sts
+        if tag:
+            tgs = [tag] if isinstance(tag, str) else tag
+            sql += f" AND tag IN ({','.join('?' * len(tgs))})"
+            args += tgs
+        if source:
+            if source == "ai":
+                sql += " AND source LIKE 'ai:%'"
+            else:
+                sql += " AND source = ?"
+                args.append(source)
+        if start is not None:
+            sql += " AND end > ?"
+            args.append(start)
+        if end is not None:
+            sql += " AND start < ?"
+            args.append(end)
+        return [self._tag(r) for r in self.db.query(sql + " ORDER BY video_id, start", args)]
+
+    def overlapping(self, vid: str, start: float, end: float, tag: str) -> dict[str, Any] | None:
+        """A tag of the same kind over this range, rejected ones included (a dropped
+        tag must not come back on a rerun)."""
+        r = self.db.one("SELECT * FROM tags WHERE video_id = ? AND tag = ? AND start < ? AND end > ?"
+                        " LIMIT 1", (vid, tag, end, start))
+        return self._tag(r) if r else None
+
+    def drop_ai_proposals(self, vid: str) -> int:
+        n = self.db.one("SELECT COUNT(*) AS n FROM tags WHERE video_id = ? AND status = 'proposed'"
+                        " AND source LIKE 'ai:%'", (vid,))
+        self.db.execute("DELETE FROM tags WHERE video_id = ? AND status = 'proposed'"
+                        " AND source LIKE 'ai:%'", (vid,))
+        return int(n["n"]) if n else 0
+
+    def review_count(self) -> int:
+        r = self.db.one("SELECT COUNT(*) AS n FROM tags t JOIN videos v ON v.id = t.video_id"
+                        " WHERE t.status = 'proposed' AND v.current = 1")
+        return int(r["n"]) if r else 0
+
+    def review_counts(self) -> dict[str, int]:
+        return {r["video_id"]: r["n"] for r in self.db.query(
+            "SELECT video_id, COUNT(*) AS n FROM tags WHERE status = 'proposed' GROUP BY video_id")}
+
+    def tag_counts(self) -> dict[str, dict[str, int]]:
+        out: dict[str, dict[str, int]] = {}
+        for r in self.db.query("SELECT tag, status, COUNT(*) AS n FROM tags GROUP BY tag, status"):
+            out.setdefault(r["tag"], {"accepted": 0, "proposed": 0, "rejected": 0})[r["status"]] = r["n"]
+        return out
+
+    # -- faces -------------------------------------------------------------------------
+    @staticmethod
+    def _face(r: Any) -> dict[str, Any]:
+        d = dict(r)
+        d["box"] = json.loads(d["box"]) if d.get("box") else None
+        return d
+
+    def replace_faces(self, vid: str, faces: list[dict[str, Any]]) -> int:
+        """New faces for a video; faces a person already confirmed or rejected stay."""
+        stamp = now()
+        with self.db.transaction():
+            self.db.execute("DELETE FROM faces WHERE video_id = ? AND confirmed IS NULL", (vid,))
+            for f in faces:
+                self.db.execute(
+                    "INSERT INTO faces (id, video_id, person_id, at, score, box, confirmed, created_at)"
+                    " VALUES (?,?,?,?,?,?,?,?)",
+                    ("face_" + uuid.uuid4().hex[:10], vid, f.get("person"), f["at"], f["score"],
+                     dumps(f.get("box")) if f.get("box") else None, f.get("confirmed"), stamp))
+        return len(faces)
+
+    def faces(self, *, video: str | None = None, person: str | None = None,
+              confirmed: bool | None = None, start: float | None = None, end: float | None = None,
+              limit: int | None = None) -> list[dict[str, Any]]:
+        sql, args = "SELECT * FROM faces WHERE 1=1", []
+        if video:
+            sql += " AND video_id = ?"
+            args.append(video)
+        if person:
+            sql += " AND person_id = ?"
+            args.append(person)
+        if confirmed is True:
+            sql += " AND confirmed = 1"
+        elif confirmed is False:
+            sql += " AND confirmed IS NULL AND person_id IS NOT NULL"
+        if start is not None:
+            sql += " AND at >= ?"
+            args.append(start)
+        if end is not None:
+            sql += " AND at < ?"
+            args.append(end)
+        sql += " ORDER BY video_id, at"
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        return [self._face(r) for r in self.db.query(sql, args)]
+
+    def face(self, fid: str) -> dict[str, Any]:
+        r = self.db.one("SELECT * FROM faces WHERE id = ?", (fid,))
+        if r is None:
+            raise NotFoundError(f"face {fid} not found")
+        return self._face(r)
+
+    def set_face(self, fid: str, **fields: Any) -> dict[str, Any]:
+        self.face(fid)
+        self.db.execute(f"UPDATE faces SET {', '.join(k + ' = ?' for k in fields)} WHERE id = ?",  # noqa: S608
+                        (*fields.values(), fid))
+        return self.face(fid)
+
+    # -- places ------------------------------------------------------------------------
+    @staticmethod
+    def _place(r: Any) -> dict[str, Any]:
+        d = dict(r)
+        d["implies"] = json.loads(d["implies"] or "[]")
+        return d
+
+    def places(self, franchise: str | None = None) -> list[dict[str, Any]]:
+        if franchise:
+            rows = self.db.query("SELECT * FROM places WHERE franchise = ? ORDER BY name", (franchise,))
+        else:
+            rows = self.db.query("SELECT * FROM places ORDER BY franchise, name")
+        return [self._place(r) for r in rows]
+
+    def place(self, pid: str) -> dict[str, Any]:
+        r = self.db.one("SELECT * FROM places WHERE id = ?", (pid,))
+        if r is None:
+            raise NotFoundError(f"place {pid} not found")
+        return self._place(r)
+
+    def add_place(self, name: str, parent: str | None, franchise: str, implies: list[str],
+                  status: str = "accepted", source: str = "person") -> dict[str, Any]:
+        base = slug(name)
+        if not base:
+            raise MarcarrError("give the place a name")
+        if parent:
+            par = self.place(parent)
+            franchise = franchise or par["franchise"]
+            base = f"{parent}/{base}"
+        pid = base
+        n = 2
+        while self.db.one("SELECT 1 FROM places WHERE id = ?", (pid,)):
+            pid = f"{base}-{n}"
+            n += 1
+        self.db.execute(
+            "INSERT INTO places (id, name, parent_id, franchise, implies, status, source, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            (pid, name.strip()[:120], parent, franchise.strip()[:120], dumps(implies), status,
+             source, now()))
+        return self.place(pid)
+
+    def update_place(self, pid: str, **fields: Any) -> dict[str, Any]:
+        self.place(pid)
+        if "implies" in fields:
+            fields["implies"] = dumps(fields["implies"])
+        if fields:
+            self.db.execute(f"UPDATE places SET {', '.join(k + ' = ?' for k in fields)} WHERE id = ?",  # noqa: S608
+                            (*fields.values(), pid))
+        return self.place(pid)
+
+    def delete_place(self, pid: str) -> None:
+        self.place(pid)
+        self.db.execute("DELETE FROM places WHERE id = ? OR id LIKE ?", (pid, pid + "/%"))
+
+    def place_scenes(self, *, place: str | None = None, video: str | None = None,
+                     with_children: bool = True) -> list[dict[str, Any]]:
+        sql, args = "SELECT * FROM place_scenes WHERE status != 'rejected'", []
+        if place:
+            if with_children:
+                sql += " AND (place_id = ? OR place_id LIKE ?)"
+                args += [place, place + "/%"]
+            else:
+                sql += " AND place_id = ?"
+                args.append(place)
+        if video:
+            sql += " AND video_id = ?"
+            args.append(video)
+        return [dict(r) for r in self.db.query(sql + " ORDER BY video_id, start", args)]
+
+    def set_place_scene(self, vid: str, start: float, end: float, place: str | None,
+                        source: str = "person") -> None:
+        with self.db.transaction():
+            self.db.execute("DELETE FROM place_scenes WHERE video_id = ? AND start < ? AND end > ?",
+                            (vid, end - 0.5, start + 0.5))
+            if place:
+                self.place(place)
+                self.db.execute(
+                    "INSERT OR REPLACE INTO place_scenes (place_id, video_id, start, end, status,"
+                    " source, created_at) VALUES (?,?,?,?,?,?,?)",
+                    (place, vid, start, end, "accepted", source, now()))
+
+    # -- AI spending -------------------------------------------------------------------
+    def add_usage(self, vid: str | None, step: str, cost: float, tokens: int) -> None:
+        if cost or tokens:
+            self.db.execute("INSERT INTO ai_usage (at, video_id, step, cost, tokens) VALUES (?,?,?,?,?)",
+                            (now(), vid, step, cost, tokens))
+
+    def month_cost(self) -> float:
+        r = self.db.one("SELECT COALESCE(SUM(cost), 0) AS c FROM ai_usage WHERE at >= ?",
+                        (month_start(),))
+        return float(r["c"]) if r else 0.0
+
+    def month_seconds(self) -> float:
+        r = self.db.one("SELECT COALESCE(SUM(seconds), 0) AS s FROM steps WHERE finished_at >= ?",
+                        (month_start(),))
+        return float(r["s"]) if r else 0.0
