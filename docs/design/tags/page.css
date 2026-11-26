@@ -1,0 +1,5 @@
+.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(186px,1fr));gap:2px 14px}
+.app a.tl{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:6px;color:var(--text);text-decoration:none;font-size:13.5px}
+.tl:hover{background:var(--raised)}
+.tl .c{margin-left:auto;font:400 12px 'DM Mono',monospace;color:var(--dim)}
+.bm{flex:none;width:9px;height:12px;background:var(--accent);clip-path:polygon(0 0,100% 0,100% 100%,50% calc(100% - 4px),0 100%)}

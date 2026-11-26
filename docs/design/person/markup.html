@@ -1,0 +1,50 @@
+
+<div class="app t-dark">
+  <nav class="side" aria-label="Marcarr">
+    <a href="Main.dc.html" aria-label="Marcarr" style="display: flex; align-items: center; gap: 10px; padding: 0 10px 20px; text-decoration: none; color: #f7f6ef"><svg width="19" height="26" sc-camel-view-box="0 0 22 31" aria-hidden="true"><path fill="#f5d547" d="M5 0h11.2c.5 0 1 .2 1.3.5l4 4c.3.4.5.8.5 1.3v22.5c0 1.5-1.8 2.300-2.900 1.300L11 22.200l-8.100 7.400C1.800 30.600 0 29.800 0 28.300V5a5 5 0 0 1 5-5z"></path></svg><span class="hd word" style="font-size: 22px; font-weight: 700">Marcarr</span></a>
+    <a href="Main.dc.html" class="nav on" aria-current="page"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.900" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M8 4v16M16 4v16M3 9h5M3 15h5M16 9h5M16 15h5"></path></svg><span class="t">Library</span></a>
+    <a href="Search.dc.html" class="nav"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.900" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span class="t">Search</span></a>
+    <a href="Review.dc.html" class="nav"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.900" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 12.500l3 3 5-6"></path></svg><span class="t">Review</span><span class="n">113</span></a>
+    <a href="Tags.dc.html" class="nav"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.900" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8z"></path><circle cx="7.500" cy="8.500" r="1.200"></circle></svg><span class="t">Tags</span></a>
+    <a href="Activity.dc.html" class="nav"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.900" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"></path></svg><span class="t">Activity</span></a>
+    <a href="API.dc.html" class="nav"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.900" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 8l-5 4 5 4M16 8l5 4-5 4M13.500 5l-3 14"></path></svg><span class="t">API</span></a>
+    <a href="Settings.dc.html" class="nav"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.900" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.900 4.900l2.100 2.100M17 17l2.100 2.100M4.900 19.100L7 17M17 7l2.100-2.100"></path></svg><span class="t">Settings</span></a>
+    <div class="foot" style="margin-top: auto; padding: 24px 12px 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #929a9d">
+      <span style="display: flex; align-items: center; gap: 7px; color: #bcc2c5"><span style="width: 7px; height: 7px; border-radius: 50%; background: #5ec26a"></span>Plex connected</span>
+      <span>Know what's in every scene.</span>
+    </div>
+  </nav>
+
+  <main class="main">
+    <div class="wrap">
+      <header style="display: flex; align-items: center; flex-wrap: wrap; gap: 16px 22px">
+        <span role="img" aria-label="Rupert Grint" style="flex: none; width: 104px; height: 104px; border-radius: 16px; background: var(--hover) url(&quot;71691d8d-a647-4f46-b665-736cbb99471d&quot;) center/cover"></span>
+        <div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+          <nav class="crumb" aria-label="Breadcrumb"><a href="Main.dc.html">Library</a><span>/</span><span>People</span><span>/</span><span>Rupert Grint</span></nav>
+          <h1 class="h1">Rupert Grint</h1>
+          <div style="font-size: 15px; color: var(--dim)">Ron Weasley in Harry Potter</div>
+          <div class="mono" style="font-size: 12px; color: var(--dim)">{{ counts }}</div>
+        </div>
+      </header>
+
+      <section aria-label="Faces waiting for a name">
+        <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding-bottom: 12px">
+          <h2 class="h2" style="flex: 1 1 200px">{{ facesTitle }}</h2>
+          <sc-if value="{{ hasFaces }}" hint-placeholder-val="{{ true }}"><button type="button" class="btn sm ghost" sc-camel-on-click="{{ pickAll }}">{{ pickAllLabel }}</button><button type="button" class="btn sm" sc-camel-on-click="{{ notHim }}">Not him</button><button type="button" class="btn sm pri" sc-camel-on-click="{{ confirm }}">{{ confirmLabel }}</button></sc-if>
+        </div>
+        <sc-if value="{{ hasFaces }}" hint-placeholder-val="{{ true }}">
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px">
+            <sc-for list="{{ faces }}" as="f" hint-placeholder-count="6"><div style="display: flex; flex-direction: column; gap: 6px"><button type="button" class="pk" aria-pressed="{{ f.on }}" aria-label="{{ f.aria }}" sc-camel-on-click="{{ f.pick }}" style="{{ f.bg }}"><span class="tm">{{ f.at }}</span></button><span class="mono" style="font-size: 12px; color: var(--dim)">{{ f.score }}</span></div></sc-for>
+          </div>
+        </sc-if>
+      </section>
+
+      <section aria-label="Scenes">
+        <div style="display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); margin-bottom: 14px"><h2 class="h2">Harry Potter and the Sorcerer's Stone</h2><span class="mono" style="margin-left: auto; font-size: 12px; color: var(--dim)">{{ sceneCount }}</span></div>
+        <div class="res"><sc-for list="{{ scenes }}" as="r" hint-placeholder-count="6"><div class="fcard"><a href="Scene.dc.html" class="fst" aria-label="Open the scene"><span style="{{ r.frame }}"></span><span class="tm">{{ r.range }}</span></a><sc-if value="{{ r.hasText }}"><div class="clamp" style="font-size: 13.5px; font-weight: 600">{{ r.text }}</div></sc-if><div style="display: flex; flex-wrap: wrap; gap: 5px"><sc-for list="{{ r.tags }}" as="t"><span style="{{ t.style }}">{{ t.name }}</span></sc-for></div></div></sc-for></div>
+        <sc-if value="{{ hasMore }}" hint-placeholder-val="{{ true }}"><div style="padding-top: 16px"><button type="button" class="btn" sc-camel-on-click="{{ showAll }}">{{ moreLabel }}</button></div></sc-if>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
