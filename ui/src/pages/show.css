@@ -1,0 +1,6 @@
+/* Show page (docs/design/show/page.css), scoped to the page. */
+.pg-show .sn{display:flex;align-items:center;gap:12px;width:100%;padding:5px 8px;border:0;border-radius:8px;background:transparent;color:var(--text);font:inherit;text-align:left;cursor:pointer;box-sizing:border-box}
+.pg-show .sn:hover{background:var(--raised)}
+.pg-show .sn[aria-pressed="true"]{background:var(--raised);box-shadow:inset 3px 0 0 var(--accent)}
+.pg-show .er{display:grid;grid-template-columns:44px minmax(220px,1.4fr) 64px minmax(160px,1fr) 80px 150px;align-items:center;column-gap:12px;padding:8px 8px;border-top:1px solid var(--line);font-size:13.5px}
+.app .pg-show a.et{color:var(--text);text-decoration:none;font-weight:600}

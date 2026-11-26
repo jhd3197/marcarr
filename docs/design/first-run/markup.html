@@ -1,0 +1,45 @@
+
+<div class="app t-dark">
+
+  <main class="main">
+    <div style="width: 100%; max-width: 640px; margin-top: 5vh; display: flex; flex-direction: column; gap: 26px">
+      <div style="display: flex; align-items: center; gap: 12px"><svg width="24" height="33" sc-camel-view-box="0 0 22 31" aria-hidden="true"><path fill="var(--accent)" d="M5 0h11.2c.5 0 1 .2 1.3.5l4 4c.3.4.5.8.5 1.3v22.5c0 1.5-1.8 2.300-2.900 1.300L11 22.200l-8.100 7.400C1.800 30.600 0 29.800 0 28.300V5a5 5 0 0 1 5-5z"></path></svg><span class="hd" style="font-size: 28px; font-weight: 700">Marcarr</span></div>
+      <ol style="display: flex; gap: 10px; margin: 0; padding: 0; list-style: none">
+        <sc-for list="{{ steps }}" as="s" hint-placeholder-count="4"><li class="{{ s.cls }}"><i>{{ s.n }}</i>{{ s.name }}</li></sc-for>
+      </ol>
+
+      <section class="box" style="padding: 24px 26px 26px">
+        <sc-if value="{{ is1 }}" hint-placeholder-val="{{ true }}">
+          <h1 class="h1" style="font-size: 26px; padding-bottom: 12px">Connect Plex</h1>
+          <div class="fr"><label class="fl" for="u-srv">Server</label><input id="u-srv" type="text" class="inp mono" value="http://127.0.0.1:32400" sc-camel-read-only="{{ true }}" style="flex: 1 1 240px; width: auto"></div>
+          <div class="fr"><label class="fl" for="u-tok">Token</label><input id="u-tok" type="password" class="inp mono" placeholder="Paste a token" style="flex: 1 1 200px; width: auto"><span style="color: var(--dim)">or</span><button type="button" class="btn sm">Sign in with Plex</button></div>
+          <div style="display: flex; align-items: center; gap: 12px; padding-top: 16px"><button type="button" class="btn" sc-camel-on-click="{{ test }}">Test</button><sc-if value="{{ tested }}"><span style="display: inline-flex; align-items: center; gap: 7px; font-weight: 600"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ok)"></span>Connected. 2 libraries found</span></sc-if></div>
+        </sc-if>
+        <sc-if value="{{ is2 }}" hint-placeholder-val="{{ false }}">
+          <h1 class="h1" style="font-size: 26px; padding-bottom: 12px">Pick libraries</h1>
+          <sc-for list="{{ libs }}" as="b" hint-placeholder-count="2"><div class="fr"><button type="button" role="switch" class="sw" aria-checked="{{ b.on }}" aria-label="{{ b.name }}" sc-camel-on-click="{{ b.toggle }}"><i></i></button><span style="flex: 1; font-size: 15px; font-weight: 600">{{ b.name }}</span><span class="mono" style="font-size: 12px; color: var(--dim)">{{ b.note }}</span></div></sc-for>
+        </sc-if>
+        <sc-if value="{{ is3 }}" hint-placeholder-val="{{ false }}">
+          <h1 class="h1" style="font-size: 26px; padding-bottom: 16px">Use AI?</h1>
+          <div style="display: flex; flex-wrap: wrap; gap: 12px">
+            <button type="button" class="opt" aria-pressed="{{ ai }}" sc-camel-on-click="{{ aiYes }}"><span class="hd" style="font-size: 18px; font-weight: 600">Use AI</span><span style="color: var(--dim)">Tags and named places</span></button>
+            <button type="button" class="opt" aria-pressed="{{ noAi }}" sc-camel-on-click="{{ aiNo }}"><span class="hd" style="font-size: 18px; font-weight: 600">Not now</span><span style="color: var(--dim)">Shots, scenes, signals and cast still work</span></button>
+          </div>
+          <sc-if value="{{ ai }}">
+            <div class="fr" style="margin-top: 10px"><label class="fl" for="u-tm">Text model</label><sc-raw-select id="u-tm" class="sel"><option>[TEXT MODEL]</option></sc-raw-select></div>
+            <div class="fr"><label class="fl" for="u-vm">Vision model</label><sc-raw-select id="u-vm" class="sel"><option>[VISION MODEL]</option></sc-raw-select></div>
+            <div class="fr"><label class="fl" for="u-lim">Monthly limit</label><input id="u-lim" type="text" class="inp mono" value="$10.00" sc-camel-read-only="{{ true }}" style="width: 110px"></div>
+          </sc-if>
+        </sc-if>
+        <sc-if value="{{ is4 }}" hint-placeholder-val="{{ false }}">
+          <h1 class="h1" style="font-size: 26px; padding-bottom: 12px">{{ lastTitle }}</h1>
+          <sc-for list="{{ summary }}" as="r" hint-placeholder-count="3"><div class="fr"><span class="fl">{{ r.k }}</span><span>{{ r.v }}</span></div></sc-for>
+          <sc-if value="{{ scanning }}"><div style="padding-top: 18px"><div role="progressbar" aria-label="First scan" aria-valuemin="0" aria-valuemax="100" aria-valuenow="12" style="height: 8px; border-radius: 4px; background: var(--raised); overflow: hidden"><div style="height: 100%; width: 12%; background: var(--accent)"></div></div><div style="margin-top: 8px; color: var(--dim)">Reading the library: 8 films and 1 show found</div></div></sc-if>
+        </sc-if>
+      </section>
+
+      <div style="display: flex; gap: 10px"><sc-if value="{{ canBack }}"><button type="button" class="btn" sc-camel-on-click="{{ back }}">Back</button></sc-if><div style="flex: 1"></div><sc-if value="{{ showNext }}"><button type="button" class="btn pri" sc-camel-on-click="{{ next }}">{{ nextLabel }}</button></sc-if><sc-if value="{{ scanning }}"><a href="Activity.dc.html" class="btn pri">Go to Activity</a></sc-if></div>
+    </div>
+  </main>
+</div>
+</x-dc>

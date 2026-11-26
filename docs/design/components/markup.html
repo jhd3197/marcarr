@@ -1,0 +1,65 @@
+
+<div class="app t-dark">
+
+  <main class="main">
+<div class="cp t-dark">
+        <div style="display: flex; align-items: center; gap: 12px"><svg width="22" height="30" sc-camel-view-box="0 0 22 31" aria-hidden="true"><path fill="var(--accent)" d="M5 0h11.2c.5 0 1 .2 1.3.5l4 4c.3.4.5.8.5 1.3v22.5c0 1.5-1.8 2.300-2.900 1.300L11 22.200l-8.100 7.400C1.800 30.600 0 29.800 0 28.300V5a5 5 0 0 1 5-5z"></path></svg><span class="hd" style="font-size: 26px; font-weight: 700">Marcarr</span><span class="lab" style="margin-left: auto">Dark</span></div>
+
+        <section><h2 class="lab" style="margin: 0 0 10px">Tag chip</h2>
+          <div class="row"><span style="{{ chipA }}">Christmas</span><span style="font-size: 12px; color: var(--dim); margin-right: 12px">Accepted</span><span style="{{ chipP }}">Christmas</span><span style="font-size: 12px; color: var(--dim); margin-right: 12px">Proposed</span><span style="{{ chipR }}">Christmas</span><span style="font-size: 12px; color: var(--dim)">Rejected</span></div>
+          <div class="row" style="margin-top: 12px"><sc-for list="{{ famChips }}" as="t" hint-placeholder-count="10"><span style="{{ t.a }}">{{ t.name }}</span></sc-for></div>
+          <div class="row" style="margin-top: 8px"><sc-for list="{{ famChips }}" as="t" hint-placeholder-count="10"><span style="{{ t.p }}">{{ t.name }}</span></sc-for></div>
+        </section>
+
+        <section><h2 class="lab" style="margin: 0 0 10px">Timeline lane</h2>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <sc-for list="{{ lanes }}" as="g" hint-placeholder-count="5"><div style="display: flex; align-items: center; gap: 10px"><span style="{{ g.label }}">{{ g.name }}</span><div class="ln" style="{{ g.track }}"><sc-for list="{{ g.bars }}" as="b"><span style="{{ b }}"></span></sc-for></div></div></sc-for>
+          </div>
+        </section>
+
+        <section><h2 class="lab" style="margin: 0 0 10px">Scene card</h2>
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px">
+            <sc-for list="{{ cards }}" as="r" hint-placeholder-count="3"><div style="display: flex; flex-direction: column; gap: 8px"><span style="position: relative; display: block; aspect-ratio: 2.400/1; border-radius: 8px; overflow: hidden; background: #000"><span style="{{ r.frame }}"></span><sc-if value="{{ r.hidden }}"><span style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; font: 700 11px 'DM Sans', sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #f7f6ef">Spoiler</span></sc-if><span style="position: absolute; left: 8px; bottom: 8px; padding: 2px 7px; border-radius: 5px; background: rgba(16,19,23,.82); color: #f7f6ef; font: 400 12px 'DM Mono', monospace">{{ r.range }}</span></span><div class="clamp" style="font-size: 13.5px; font-weight: 600">{{ r.text }}</div><div class="row" style="gap: 5px"><sc-for list="{{ r.tags }}" as="t"><span style="{{ t.style }}">{{ t.name }}</span></sc-for></div></div></sc-for>
+          </div>
+        </section>
+
+        <section><h2 class="lab" style="margin: 0 0 10px">Step states</h2>
+          <div class="row" style="gap: 8px 18px"><sc-for list="{{ cells }}" as="c" hint-placeholder-count="7"><span style="display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px"><span aria-hidden="true" style="{{ c.style }}">{{ c.glyph }}</span>{{ c.name }}</span></sc-for></div>
+        </section>
+
+        <section><h2 class="lab" style="margin: 0 0 10px">Buttons</h2>
+          <div class="row"><button type="button" class="btn pri">Keep <span class="key">K</span></button><button type="button" class="btn">Drop <span class="key">D</span></button><button type="button" class="btn ghost">Skip</button><button type="button" class="btn sm pri">Keep</button><button type="button" class="btn sm">Drop</button><button type="button" class="pill on">All <em>8</em></button><button type="button" class="pill">Failed <em>1</em></button><button type="button" role="switch" class="sw" aria-checked="true" aria-label="On"><i></i></button><button type="button" role="switch" class="sw" aria-checked="false" aria-label="Off"><i></i></button></div>
+        </section>
+</div>
+<div class="cp t-light">
+        <div style="display: flex; align-items: center; gap: 12px"><svg width="22" height="30" sc-camel-view-box="0 0 22 31" aria-hidden="true"><path fill="var(--accent)" d="M5 0h11.2c.5 0 1 .2 1.3.5l4 4c.3.4.5.8.5 1.3v22.5c0 1.5-1.8 2.300-2.900 1.300L11 22.200l-8.100 7.400C1.800 30.600 0 29.800 0 28.300V5a5 5 0 0 1 5-5z"></path></svg><span class="hd" style="font-size: 26px; font-weight: 700">Marcarr</span><span class="lab" style="margin-left: auto">Light</span></div>
+
+        <section><h2 class="lab" style="margin: 0 0 10px">Tag chip</h2>
+          <div class="row"><span style="{{ chipA }}">Christmas</span><span style="font-size: 12px; color: var(--dim); margin-right: 12px">Accepted</span><span style="{{ chipP }}">Christmas</span><span style="font-size: 12px; color: var(--dim); margin-right: 12px">Proposed</span><span style="{{ chipR }}">Christmas</span><span style="font-size: 12px; color: var(--dim)">Rejected</span></div>
+          <div class="row" style="margin-top: 12px"><sc-for list="{{ famChips }}" as="t" hint-placeholder-count="10"><span style="{{ t.a }}">{{ t.name }}</span></sc-for></div>
+          <div class="row" style="margin-top: 8px"><sc-for list="{{ famChips }}" as="t" hint-placeholder-count="10"><span style="{{ t.p }}">{{ t.name }}</span></sc-for></div>
+        </section>
+
+        <section><h2 class="lab" style="margin: 0 0 10px">Timeline lane</h2>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <sc-for list="{{ lanes }}" as="g" hint-placeholder-count="5"><div style="display: flex; align-items: center; gap: 10px"><span style="{{ g.label }}">{{ g.name }}</span><div class="ln" style="{{ g.track }}"><sc-for list="{{ g.bars }}" as="b"><span style="{{ b }}"></span></sc-for></div></div></sc-for>
+          </div>
+        </section>
+
+        <section><h2 class="lab" style="margin: 0 0 10px">Scene card</h2>
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px">
+            <sc-for list="{{ cards }}" as="r" hint-placeholder-count="3"><div style="display: flex; flex-direction: column; gap: 8px"><span style="position: relative; display: block; aspect-ratio: 2.400/1; border-radius: 8px; overflow: hidden; background: #000"><span style="{{ r.frame }}"></span><sc-if value="{{ r.hidden }}"><span style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; font: 700 11px 'DM Sans', sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #f7f6ef">Spoiler</span></sc-if><span style="position: absolute; left: 8px; bottom: 8px; padding: 2px 7px; border-radius: 5px; background: rgba(16,19,23,.82); color: #f7f6ef; font: 400 12px 'DM Mono', monospace">{{ r.range }}</span></span><div class="clamp" style="font-size: 13.5px; font-weight: 600">{{ r.text }}</div><div class="row" style="gap: 5px"><sc-for list="{{ r.tags }}" as="t"><span style="{{ t.style }}">{{ t.name }}</span></sc-for></div></div></sc-for>
+          </div>
+        </section>
+
+        <section><h2 class="lab" style="margin: 0 0 10px">Step states</h2>
+          <div class="row" style="gap: 8px 18px"><sc-for list="{{ cells }}" as="c" hint-placeholder-count="7"><span style="display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px"><span aria-hidden="true" style="{{ c.style }}">{{ c.glyph }}</span>{{ c.name }}</span></sc-for></div>
+        </section>
+
+        <section><h2 class="lab" style="margin: 0 0 10px">Buttons</h2>
+          <div class="row"><button type="button" class="btn pri">Keep <span class="key">K</span></button><button type="button" class="btn">Drop <span class="key">D</span></button><button type="button" class="btn ghost">Skip</button><button type="button" class="btn sm pri">Keep</button><button type="button" class="btn sm">Drop</button><button type="button" class="pill on">All <em>8</em></button><button type="button" class="pill">Failed <em>1</em></button><button type="button" role="switch" class="sw" aria-checked="true" aria-label="On"><i></i></button><button type="button" role="switch" class="sw" aria-checked="false" aria-label="Off"><i></i></button></div>
+        </section>
+</div>
+  </main>
+</div>
+</x-dc>

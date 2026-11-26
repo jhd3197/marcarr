@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "marcarr"
+dynamic = ["version"]
+description = "Know what's in every scene: shots, subtitles, scenes, faces and tags for your Plex library"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2",
+    "PyYAML>=6.0",
+    "requests>=2.31",
+    "numpy>=1.26",
+    "pillow>=10.1",
+    "prompture[media,openai]>=1.19.2",
+]
+
+[project.optional-dependencies]
+faces = ["opencv-python-headless>=4.8"]  # who is on screen: YuNet + SFace
+mcp = ["prompture[mcp]>=1.19.2", "httpx>=0.27"]  # `marcarr mcp`
+dev = [
+    "pytest>=8",
+    "httpx>=0.27",
+    "responses>=0.25",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+marcarr = "marcarr.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/jhd3197/Marcarr"
+
+[tool.setuptools.packages.find]
+include = ["marcarr", "marcarr.*"]
+
+[tool.setuptools.package-data]
+marcarr = ["stages/tags_v1.json", "ui/**/*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "marcarr.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["B008", "E501", "SIM102", "SIM105"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["marcarr"]

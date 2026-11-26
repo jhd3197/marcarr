@@ -1,0 +1,154 @@
+
+<div class="app t-dark">
+  <nav class="side" aria-label="Marcarr">
+    <a href="Main.dc.html" aria-label="Marcarr" style="display: flex; align-items: center; gap: 10px; padding: 0 10px 20px; text-decoration: none; color: #f7f6ef"><svg width="19" height="26" sc-camel-view-box="0 0 22 31" aria-hidden="true"><path fill="#f5d547" d="M5 0h11.2c.5 0 1 .2 1.3.5l4 4c.3.4.5.8.5 1.3v22.5c0 1.5-1.8 2.300-2.900 1.300L11 22.200l-8.100 7.400C1.800 30.600 0 29.800 0 28.300V5a5 5 0 0 1 5-5z"></path></svg><span class="hd word" style="font-size: 22px; font-weight: 700">Marcarr</span></a>
+    <a href="Main.dc.html" class="nav"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.900" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M8 4v16M16 4v16M3 9h5M3 15h5M16 9h5M16 15h5"></path></svg><span class="t">Library</span></a>
+    <a href="Search.dc.html" class="nav"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.900" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span class="t">Search</span></a>
+    <a href="Review.dc.html" class="nav"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.900" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 12.500l3 3 5-6"></path></svg><span class="t">Review</span><span class="n">113</span></a>
+    <a href="Tags.dc.html" class="nav"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.900" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8z"></path><circle cx="7.500" cy="8.500" r="1.200"></circle></svg><span class="t">Tags</span></a>
+    <a href="Activity.dc.html" class="nav"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.900" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"></path></svg><span class="t">Activity</span></a>
+    <a href="API.dc.html" class="nav"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.900" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 8l-5 4 5 4M16 8l5 4-5 4M13.500 5l-3 14"></path></svg><span class="t">API</span></a>
+    <a href="Settings.dc.html" class="nav on" aria-current="page"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.900" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.900 4.900l2.100 2.100M17 17l2.100 2.100M4.900 19.100L7 17M17 7l2.100-2.100"></path></svg><span class="t">Settings</span></a>
+    <div class="foot" style="margin-top: auto; padding: 24px 12px 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #929a9d">
+      <span style="display: flex; align-items: center; gap: 7px; color: #bcc2c5"><span style="width: 7px; height: 7px; border-radius: 50%; background: #5ec26a"></span>Plex connected</span>
+      <span>Know what's in every scene.</span>
+    </div>
+  </nav>
+
+  <main class="main">
+    <div class="wrap">
+      <header style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px">
+        <h1 class="h1" style="flex: 1 1 200px">Settings</h1>
+        <sc-if value="{{ dirty }}" hint-placeholder-val="{{ false }}"><span style="font-size: 13px; color: var(--warn); font-weight: 600">Unsaved changes</span><button type="button" class="btn" sc-camel-on-click="{{ discard }}">Discard</button></sc-if>
+        <button type="button" class="{{ saveCls }}" sc-camel-on-click="{{ save }}">{{ saveLabel }}</button>
+      </header>
+
+      <div role="tablist" class="secs" aria-label="Settings">
+        <sc-for list="{{ secs }}" as="s" hint-placeholder-count="7"><button type="button" role="tab" aria-selected="{{ s.on }}" sc-camel-on-click="{{ s.pick }}">{{ s.name }}</button></sc-for>
+      </div>
+
+      <div>
+        <div class="forms" role="tabpanel">
+          <sc-if value="{{ show.plex }}" hint-placeholder-val="{{ false }}">
+            <section aria-labelledby="s-plex">
+              <h2 id="s-plex" class="sh">Plex</h2>
+              <div class="fr"><span class="fl">Server</span><div class="fc"><input type="text" class="inp mono" value="http://127.0.0.1:32400" sc-camel-read-only="{{ true }}" aria-label="Server" style="flex: 1 1 240px; width: auto"><button type="button" class="btn sm">Test</button><span style="display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ok)"></span>Connected</span></div></div>
+              <div class="fr"><span class="fl">Token</span><div class="fc"><span class="mono" style="letter-spacing: .1em">••••••••••••••••</span><button type="button" class="btn sm">Change</button></div></div>
+              <sc-for list="{{ libs }}" as="l" hint-placeholder-count="2">
+                <div class="fr"><span class="fl">{{ l.k }}</span><div class="fc"><button type="button" role="switch" class="sw" aria-checked="{{ l.on }}" aria-label="{{ l.aria }}" sc-camel-on-click="{{ l.toggle }}"><i></i></button><span>{{ l.name }}</span><span class="mono" style="font-size: 12px; color: var(--dim)">{{ l.note }}</span></div></div>
+              </sc-for>
+            </section>
+          </sc-if>
+
+          <sc-if value="{{ show.labels }}" hint-placeholder-val="{{ false }}">
+            <section aria-labelledby="s-labels">
+              <h2 id="s-labels" class="sh">Plex labels</h2>
+              <div class="fr"><span class="fl">Write labels</span><div class="fc"><button type="button" role="switch" class="sw" aria-checked="{{ labels }}" aria-label="Write labels to Plex" sc-camel-on-click="{{ toggleLabels }}"><i></i></button></div></div>
+              <div class="fr"><label class="fl" for="s-prefix">Prefix</label><div class="fc"><input id="s-prefix" type="text" class="inp mono" value="marcarr:" sc-camel-read-only="{{ true }}" style="width: 140px"></div></div>
+              <div class="fr" style="align-items: flex-start"><span class="fl" style="padding-top: 5px">Tags to write</span><div class="fc"><sc-for list="{{ labelTags }}" as="t" hint-placeholder-count="3"><button type="button" class="lt" aria-label="{{ t.aria }}" sc-camel-on-click="{{ t.remove }}">{{ t.label }} <b>×</b></button></sc-for><button type="button" class="pill" style="border-style: dashed; height: 28px" sc-camel-on-click="{{ addLabel }}">Add a tag</button></div></div>
+            </section>
+          </sc-if>
+
+          <sc-if value="{{ show.ai }}" hint-placeholder-val="{{ false }}">
+            <section aria-labelledby="s-ai">
+              <h2 id="s-ai" class="sh">AI</h2>
+              <div class="fr"><span class="fl">Use AI</span><div class="fc"><button type="button" role="switch" class="sw" aria-checked="{{ ai }}" aria-label="Use AI" sc-camel-on-click="{{ toggleAi }}"><i></i></button></div></div>
+              <sc-if value="{{ ai }}" hint-placeholder-val="{{ true }}">
+                <div class="fr"><label class="fl" for="s-text">Text model</label><div class="fc"><sc-raw-select id="s-text" class="sel"><option>[TEXT MODEL]</option></sc-raw-select></div></div>
+                <div class="fr"><label class="fl" for="s-vision">Vision model</label><div class="fc"><sc-raw-select id="s-vision" class="sel"><option>[VISION MODEL]</option></sc-raw-select></div></div>
+                <div class="fr"><label class="fl" for="s-limit">Monthly limit</label><div class="fc"><input id="s-limit" type="text" class="inp mono" value="$10.00" sc-camel-read-only="{{ true }}" style="width: 110px"><span class="mono" style="font-size: 12.5px; color: var(--dim)">$2.01 used this month</span><a href="Activity.dc.html" style="font-size: 12.5px">Activity</a></div></div>
+              </sc-if>
+              <sc-if value="{{ noAi }}" hint-placeholder-val="{{ false }}"><div style="margin-top: 12px; padding: 16px 18px; border: 1px dashed var(--border); border-radius: 10px; font-size: 14px; color: var(--dim)">Shots, scenes, signals and cast still work. Tags and named places need AI.</div></sc-if>
+            </section>
+          </sc-if>
+
+          <sc-if value="{{ show.tags }}" hint-placeholder-val="{{ false }}">
+            <section aria-labelledby="s-tags">
+              <div class="sh" style="display: flex; align-items: baseline; gap: 12px"><h2 id="s-tags" style="flex: 1; margin: 0; font: inherit">Tags the AI looks for</h2><a href="Tags.dc.html" style="font: 500 12.5px 'DM Sans', sans-serif">All 130 tags</a></div>
+              <sc-for list="{{ families }}" as="f" hint-placeholder-count="10">
+                <div class="fr"><span class="fl" style="display: flex; align-items: center; gap: 10px"><span style="{{ f.bar }}"></span>{{ f.name }}</span><div class="fc"><button type="button" role="switch" class="sw" aria-checked="{{ f.on }}" aria-label="{{ f.aria }}" sc-camel-on-click="{{ f.toggle }}"><i></i></button><span class="mono" style="font-size: 12px; color: var(--dim)">{{ f.count }}</span><sc-if value="{{ f.subjective }}"><span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); color: var(--dim)">Subjective</span></sc-if></div></div>
+              </sc-for>
+            </section>
+          </sc-if>
+
+          <sc-if value="{{ show.faces }}" hint-placeholder-val="{{ false }}">
+            <section aria-labelledby="s-faces">
+              <h2 id="s-faces" class="sh">Faces</h2>
+              <sc-for list="{{ models }}" as="m" hint-placeholder-count="2">
+                <div class="fr"><span class="fl">{{ m.name }}</span><div class="fc"><span style="{{ m.stateStyle }}">{{ m.state }}</span><sc-if value="{{ m.missing }}"><button type="button" class="btn sm pri" sc-camel-on-click="{{ m.get }}">Download</button></sc-if></div></div>
+              </sc-for>
+              <sc-if value="{{ facesOff }}" hint-placeholder-val="{{ true }}"><div style="padding-top: 10px; font-size: 13px; color: var(--warn)">The faces step is skipped until both models are downloaded.</div></sc-if>
+            </section>
+          </sc-if>
+
+          <sc-if value="{{ show.apps }}" hint-placeholder-val="{{ false }}">
+            <section aria-labelledby="s-apps">
+              <div class="sh" style="display: flex; align-items: center; gap: 12px"><h2 id="s-apps" style="flex: 1; margin: 0; font: inherit">Connected apps</h2><a href="API.dc.html" class="btn sm">API reference</a><button type="button" class="btn sm">Add an app</button></div>
+              <sc-for list="{{ apps }}" as="a" hint-placeholder-count="3">
+                <div class="fr">
+                  <span class="fl" style="display: flex; align-items: center; gap: 10px"><span style="{{ a.badge }}">{{ a.initial }}</span>{{ a.name }}</span>
+                  <div class="fc"><span style="flex: 0 0 90px; font-size: 12.5px; color: var(--dim)">{{ a.kind }}</span><span class="mono" style="letter-spacing: .08em; color: var(--dim)">••••••••</span><span style="display: inline-flex; gap: 4px"><sc-for list="{{ a.scopes }}" as="c"><span class="mono" style="font-size: 11px; padding: 2px 7px; border-radius: 10px; border: 1px solid var(--border); color: var(--dim)">{{ c }}</span></sc-for></span><span style="flex: 1 1 130px; font-size: 12.5px; color: var(--dim)">{{ a.last }}</span><button type="button" class="btn sm">Copy key</button><button type="button" class="btn sm">New key</button><button type="button" class="btn sm ghost">Remove</button></div>
+                </div>
+              </sc-for>
+            </section>
+          </sc-if>
+
+
+          <sc-if value="{{ show.general }}" hint-placeholder-val="{{ true }}">
+            <section aria-labelledby="s-gen">
+              <h2 id="s-gen" class="sh">General</h2>
+              <div class="fr"><span class="fl">Theme</span><div class="fc"><div class="seg" role="group" aria-label="Theme"><sc-for list="{{ themes }}" as="t" hint-placeholder-count="3"><button type="button" aria-pressed="{{ t.on }}" sc-camel-on-click="{{ t.pick }}">{{ t.name }}</button></sc-for></div></div></div>
+              <div class="fr"><label class="fl" for="s-lang">Language</label><div class="fc"><sc-raw-select id="s-lang" class="sel"><option>English</option><option>Español</option></sc-raw-select></div></div>
+              <div class="fr"><span class="fl">Clock</span><div class="fc"><div class="seg" role="group" aria-label="Clock"><sc-for list="{{ clocks }}" as="t" hint-placeholder-count="2"><button type="button" aria-pressed="{{ t.on }}" sc-camel-on-click="{{ t.pick }}">{{ t.name }}</button></sc-for></div></div></div>
+            </section>
+          </sc-if>
+
+          <sc-if value="{{ show.analysis }}" hint-placeholder-val="{{ false }}">
+            <section aria-labelledby="s-an">
+              <h2 id="s-an" class="sh">Analysis</h2>
+              <sc-for list="{{ steps }}" as="t" hint-placeholder-count="7">
+                <div class="fr"><span class="fl mono" style="font-weight: 500">{{ t.name }}</span><div class="fc"><button type="button" role="switch" class="sw" aria-checked="{{ t.on }}" aria-label="{{ t.aria }}" sc-camel-on-click="{{ t.toggle }}"><i></i></button><span style="color: var(--dim)">{{ t.what }}</span><sc-if value="{{ t.hasNote }}"><span style="font-size: 12.5px; font-weight: 600; color: var(--warn)">{{ t.note }}</span></sc-if></div></div>
+              </sc-for>
+              <div class="fr"><label class="fl" for="s-par">Videos at once</label><div class="fc"><sc-raw-select id="s-par" class="sel"><option>1</option><option>2</option><option>4</option></sc-raw-select></div></div>
+              <div class="fr"><span class="fl">When</span><div class="fc"><div class="seg" role="group" aria-label="When to analyse"><sc-for list="{{ whens }}" as="t" hint-placeholder-count="2"><button type="button" aria-pressed="{{ t.on }}" sc-camel-on-click="{{ t.pick }}">{{ t.name }}</button></sc-for></div><sc-if value="{{ atNight }}"><input type="text" class="inp mono" value="01:00" sc-camel-read-only="{{ true }}" aria-label="From" style="width: 76px"><span>to</span><input type="text" class="inp mono" value="07:00" sc-camel-read-only="{{ true }}" aria-label="To" style="width: 76px"></sc-if></div></div>
+              <div class="fr"><span class="fl">New videos</span><div class="fc"><button type="button" role="switch" class="sw" aria-checked="{{ auto }}" aria-label="Analyse new videos" sc-camel-on-click="{{ toggleAuto }}"><i></i></button><span>Analyse when Plex adds them</span></div></div>
+            </section>
+          </sc-if>
+
+          <sc-if value="{{ show.places }}" hint-placeholder-val="{{ false }}">
+            <section aria-labelledby="s-pl">
+              <div class="sh" style="display: flex; align-items: center; gap: 12px"><h2 id="s-pl" style="flex: 1; margin: 0; font: inherit">Named places</h2><button type="button" class="btn sm">Add a franchise</button></div>
+              <div class="fr"><span class="fl">Harry Potter</span><div class="fc"><span class="mono" style="font-size: 12.5px; color: var(--dim)">8 titles · 14 places</span><span style="font-size: 12.5px; font-weight: 600; color: var(--warn)">{{ placesWaiting }}</span><div style="flex: 1"></div><a href="Place.dc.html" class="btn sm">Open</a></div></div>
+              <h3 class="lab" style="margin: 24px 0 4px">Where places come from</h3>
+              <sc-for list="{{ sources }}" as="t" hint-placeholder-count="2"><div class="fr"><span class="fl">{{ t.name }}</span><div class="fc"><button type="button" role="switch" class="sw" aria-checked="{{ t.on }}" aria-label="{{ t.name }}" sc-camel-on-click="{{ t.toggle }}"><i></i></button></div></div></sc-for>
+              <div class="fr"><label class="fl" for="s-wiki">Fan wiki</label><div class="fc"><input id="s-wiki" type="url" class="inp mono" placeholder="https://" style="flex: 1 1 220px; width: auto"><button type="button" class="btn sm" sc-camel-on-click="{{ importWiki }}">Import</button><sc-if value="{{ imported }}"><span style="flex: 1 1 100%; font-size: 12.5px; color: var(--dim)">41 places imported. They wait for review.</span></sc-if></div></div>
+            </section>
+          </sc-if>
+
+          <sc-if value="{{ show.notify }}" hint-placeholder-val="{{ false }}">
+            <section aria-labelledby="s-no">
+              <div class="sh" style="display: flex; align-items: center; gap: 12px"><h2 id="s-no" style="flex: 1; margin: 0; font: inherit">Notifications</h2><a href="API.dc.html" class="btn sm">Events</a><button type="button" class="btn sm">Add a webhook</button></div>
+              <sc-for list="{{ hooks }}" as="h" hint-placeholder-count="2"><div class="fr"><span class="mono" style="flex: 1 1 280px; min-width: 0; overflow-wrap: anywhere">{{ h.url }}</span><span style="flex: 1 1 200px; display: flex; flex-wrap: wrap; gap: 4px"><sc-for list="{{ h.events }}" as="c"><span class="mono" style="font-size: 11px; padding: 2px 7px; border-radius: 10px; border: 1px solid var(--border); color: var(--dim)">{{ c }}</span></sc-for></span><span style="{{ h.stateStyle }}">{{ h.state }}</span><button type="button" class="btn sm">Send a test</button><button type="button" class="btn sm ghost">Remove</button></div></sc-for>
+              <h3 class="lab" style="margin: 24px 0 4px">Last calls</h3>
+              <sc-for list="{{ log }}" as="d" hint-placeholder-count="4"><div class="fr"><span class="mono" style="flex: 0 0 60px; color: var(--dim)">{{ d.at }}</span><span class="mono" style="flex: 0 0 130px">{{ d.event }}</span><span class="mono" style="flex: 1 1 240px; min-width: 0; color: var(--dim); overflow-wrap: anywhere">{{ d.url }}</span><span class="mono" style="{{ d.codeStyle }}">{{ d.code }}</span><sc-if value="{{ d.failed }}"><button type="button" class="btn sm">Send again</button></sc-if></div></sc-for>
+            </section>
+          </sc-if>
+
+          <sc-if value="{{ show.backup }}" hint-placeholder-val="{{ false }}">
+            <section aria-labelledby="s-bk">
+              <h2 id="s-bk" class="sh">Backup</h2>
+              <div class="fr"><span class="fl">Export</span><div class="fc"><span>Kept and dropped tags, confirmed faces, named places</span><button type="button" class="btn sm">Export</button></div></div>
+              <div class="fr"><span class="fl">Import</span><div class="fc"><button type="button" class="btn sm">Choose a file</button></div></div>
+              <h2 class="sh" style="margin-top: 34px">About</h2>
+              <div class="fr"><span class="fl">Version</span><div class="fc"><span class="mono">[VERSION]</span><button type="button" class="btn sm">Check for updates</button></div></div>
+              <div class="fr"><span class="fl">Logs</span><div class="fc"><button type="button" class="btn sm">Open logs</button><button type="button" class="btn sm">Download</button></div></div>
+              <div class="fr"><span class="fl">Data folder</span><div class="fc"><span class="mono">[DATA FOLDER]</span><button type="button" class="btn sm">Open folder</button></div></div>
+              <div class="fr"><span class="fl">Source</span><div class="fc"><span class="mono">github.com/jhd3197/marcarr</span><span style="color: var(--dim)">MIT</span></div></div>
+            </section>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>

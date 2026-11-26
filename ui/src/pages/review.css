@@ -1,0 +1,10 @@
+/* docs/design/review/page.css, scoped to the review page */
+.pg-review .sel{height:32px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);font:500 12.5px 'DM Sans',sans-serif}
+.pg-review .seg{display:inline-flex;padding:3px;border-radius:9px;background:var(--raised)}
+.pg-review .seg button{height:28px;padding:0 12px;border:0;border-radius:7px;background:transparent;color:var(--dim);font:600 12.5px 'DM Sans',sans-serif;cursor:pointer}
+.pg-review .seg button[aria-pressed="true"]{background:var(--panel);color:var(--text)}
+.pg-review .qr{display:flex;align-items:center;gap:10px;width:100%;padding:6px 8px;border:0;border-radius:8px;background:transparent;color:var(--text);font:inherit;text-align:left;cursor:pointer;box-sizing:border-box}
+.pg-review .qr:hover{background:var(--raised)}
+.pg-review .ev{font-size:13px;color:var(--dim)}
+.pg-review .ev b{font-weight:600;color:var(--faint);text-transform:uppercase;font-size:10.5px;letter-spacing:.06em;margin-right:6px}
+@media (max-width:760px){.pg-review .ql{display:none}}

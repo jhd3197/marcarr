@@ -1,0 +1,16 @@
+/* docs/design/api/page.css, scoped to the API page (plus .fr for the webhook rows) */
+.pg-api .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);overflow-x:auto}
+.pg-api .tabs button{flex:none;height:42px;padding:0 14px;border:0;border-bottom:3px solid transparent;margin-bottom:-1px;background:transparent;color:var(--dim);font:500 14px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
+.pg-api .tabs button:hover{color:var(--text)}
+.pg-api .tabs button[aria-selected="true"]{color:var(--text);font-weight:700;border-bottom-color:var(--accent)}
+.pg-api .er{display:flex;align-items:center;gap:9px;width:100%;padding:6px 8px;border:0;border-radius:7px;background:transparent;color:var(--text);font:400 12.5px 'DM Mono',ui-monospace,monospace;text-align:left;cursor:pointer;box-sizing:border-box}
+.pg-api .er:hover{background:var(--raised)}
+.pg-api .er[aria-pressed="true"]{background:var(--raised);box-shadow:inset 3px 0 0 var(--accent)}
+.pg-api .er span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pg-api .m{flex:0 0 42px;font:500 10.5px 'DM Mono',monospace;padding:2px 0;border-radius:4px;text-align:center;border:1px solid var(--border);color:var(--dim)}
+.pg-api .m.post{background:var(--text);border-color:var(--text);color:var(--bg)}
+.pg-api .code{margin:0;padding:14px 16px;border-radius:10px;background:var(--well);border:1px solid var(--line);font:400 12px/1.6 'DM Mono',ui-monospace,monospace;color:var(--text);overflow-x:auto;white-space:pre}
+.pg-api .pr{display:flex;flex-wrap:wrap;gap:4px 14px;padding:9px 0;border-top:1px solid var(--line);font-size:13px}
+.pg-api .sc{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:11px;border:1px solid var(--border);font:500 11px 'DM Mono',monospace;color:var(--dim)}
+.pg-api .cap{display:flex;align-items:center;gap:10px;padding-bottom:8px}
+.pg-api .fr{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;min-height:36px;padding:10px 0;border-bottom:1px solid var(--line)}
