@@ -530,6 +530,10 @@ def person_faces(pid: str, confirmed: bool | None = None) -> dict[str, Any]:
 def person_photo(pid: str) -> Response:
     c = core()
     p = c.store.person(pid)
+    local = c.pipeline.local_photo(p["photo"] or "")
+    if local is not None:  # an uploaded photo can be replaced, so it is never kept stale
+        return FileResponse(local, media_type=PHOTO_TYPES.get(local.suffix, "image/jpeg"),
+                            headers={"Cache-Control": "no-cache"})
     url = c.pipeline.photo_source(p["photo"] or "")
     if not url:
         raise NotFoundError("no photo")
@@ -537,6 +541,44 @@ def person_photo(pid: str) -> Response:
     if path is None:
         raise NotFoundError("no photo")
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=604800"})
+
+
+PHOTO_TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+MAX_PHOTO = 10 << 20
+
+
+def _photo_ext(data: bytes) -> str | None:
+    if data[:3] == b"\xff\xd8\xff":
+        return ".jpg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return ".png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    return None
+
+
+@router.put("/people/{pid}/photo", dependencies=[REVIEW])
+async def set_person_photo(pid: str, request: Request) -> dict[str, Any]:
+    """Upload a person's photo: the request body is the image itself (JPEG, PNG or
+    WebP, up to 10 MB). Faces are matched against it the next time the faces step runs."""
+    c = core()
+    c.store.person(pid)
+    data = await request.body()
+    if len(data) > MAX_PHOTO:
+        raise MarcarrError("the photo is larger than 10 MB")
+    ext = _photo_ext(data)
+    if ext is None:
+        raise MarcarrError("the photo must be a JPEG, PNG or WebP image")
+    folder = c.data_dir / "people"
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in PHOTO_TYPES:
+        (folder / f"{pid}{old}").unlink(missing_ok=True)
+    tmp = folder / f"{pid}{ext}.part"
+    tmp.write_bytes(data)
+    tmp.replace(folder / f"{pid}{ext}")
+    p = c.store.set_person_photo(pid, f"local:{pid}{ext}")
+    c.pipeline.forget_refs()
+    return views().person_view(p)
 
 
 def _face_set(fid: str, **fields: Any) -> dict[str, Any]:

@@ -59,6 +59,7 @@ export interface Person {
   actor: string;
   character: string;
   photo: string | null;
+  manual?: boolean; // in a title's cast: added by hand, not from Plex or TMDB
   titles?: number; // titles they are in
   franchise?: string | null; // the collection most of their titles share
 }

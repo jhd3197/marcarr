@@ -10,7 +10,7 @@ import { copyText } from './settings/util';
 import './Api.css';
 
 const TABS: [string, string][] = [['ref', 'Reference'], ['events', 'Events'], ['mcp', 'MCP']];
-const mcls = (m: string) => 'm' + (m === 'POST' ? ' post' : '');
+const mcls = (m: string) => 'm' + (m === 'GET' ? '' : ' post');
 
 export default function Api() {
   const toast = useToast();
@@ -31,7 +31,8 @@ export default function Api() {
     if (!g) { g = { name: x.group, rows: [] }; groups.push(g); }
     g.rows.push({ i, method: x.method, path: x.path });
   });
-  const request = 'curl ' + (e.method === 'POST' ? '-X POST ' : '') + '-H "X-Api-Key: $MARCARR_KEY" \\\n  '
+  const request = 'curl ' + (e.method === 'GET' ? '' : `-X ${e.method} `) + '-H "X-Api-Key: $MARCARR_KEY" \\\n  '
+    + (e.upload ? `-H "Content-Type: image/jpeg" --data-binary @${e.upload} \\\n  ` : '')
     + (e.body ? '-H "Content-Type: application/json" \\\n  -d \'' + e.body.split('\n').join('\n  ') + '\' \\\n  ' : '')
     + '"' + base + e.example + '"';
 

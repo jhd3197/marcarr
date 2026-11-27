@@ -10,6 +10,7 @@ import { useApi } from '../lib/hooks';
 import { useToast } from '../lib/toast';
 import Show from './Show';
 import { CrumbLinks, personName, placeHref, posterColour, shortName, titleHref } from './title/common';
+import { AddPerson } from './title/AddPerson';
 import { castThrough, cutoffTime, parseThrough, pastCutoff, scenesThrough, timeLink } from './title/cutoff';
 import { Graph } from './title/Graph';
 import { Timeline } from './title/Timeline';
@@ -175,7 +176,29 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
     video && video.scenes ? plural(video.scenes, 'scene') : '',
   ].filter(Boolean).join(' · ');
 
-  const castSoFar = castThrough(title.cast, scenes, through);
+  const [photoKey, setPhotoKey] = useState(0); // an uploaded photo keeps its URL: this makes the page fetch it again
+  const castSoFar = castThrough(title.cast, scenes, through).map((p) => (p.manual && p.photo ? { ...p, photo: `${p.photo}?v=${photoKey}` } : p));
+  const byHand = title.cast.some((p) => p.manual);
+  const castChanged = () => { setPhotoKey((k) => k + 1); reload(); };
+  const removePerson = async (p: Person) => {
+    try {
+      await api.removeCast(title.id, p.id);
+      toast(`${p.character || p.actor} removed from this title`);
+      reload();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), true);
+    }
+  };
+  const findPeople = async () => {
+    if (!video) return;
+    try {
+      await api.runVideo(video.id, ['cast', 'faces']);
+      toast('Looking for them in the video');
+      reload();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), true);
+    }
+  };
   const castShown = allCast ? castSoFar : castSoFar.slice(0, 8);
 
   // Scene list: scenes with tags (all scenes when there are none yet, or tags are off).
@@ -203,14 +226,21 @@ function Film({ title, reload }: { title: Title; reload: () => void }) {
           {castSoFar.length ? (
             <div style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px')}>
               {castShown.map((p) => (
-                <Link key={p.id} to={`/people/${encodeURIComponent(p.id)}`} title={p.actor} style={css('display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text); text-decoration: none')}>
-                  <Avatar name={p.character || p.actor} photo={p.photo} size={24} />{p.character || p.actor}
-                </Link>
+                <span key={p.id} style={css('display: inline-flex; align-items: center; gap: 4px')}>
+                  <Link to={`/people/${encodeURIComponent(p.id)}`} title={p.actor} style={css('display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text); text-decoration: none')}>
+                    <Avatar name={p.character || p.actor} photo={p.photo} size={24} />{p.character || p.actor}
+                  </Link>
+                  {p.manual ? <button type="button" className="linkish" aria-label={`Remove ${p.character || p.actor} from this title`} title="Remove from this title" onClick={() => removePerson(p)}>×</button> : null}
+                </span>
               ))}
               {through !== null ? <span className="mono" style={css('font-size: 11.5px; color: var(--faint)')}>met by scene {through}</span> : null}
               {castSoFar.length > 8 ? <button type="button" className="linkish" onClick={() => setAllCast(!allCast)}>{allCast ? 'Less' : 'All cast'}</button> : null}
             </div>
           ) : null}
+          <div style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px')}>
+            <AddPerson title={title.id} empty={title.cast.length === 0} onDone={castChanged} />
+            {byHand && video ? <button type="button" className="linkish" disabled={busy(video.state.kind)} onClick={findPeople}>Find them in the video</button> : null}
+          </div>
         </div>
         <div style={css('display: flex; gap: 8px; align-items: flex-start')}>
           {!tagsOn ? <Link to="/settings" className="btn pri">Turn on AI</Link>
