@@ -97,6 +97,17 @@ def tag_list(family: str | None = None, used: bool = False) -> dict[str, Any]:
     return {"mine": mine, "families": fams, "own": own, "signals": sigs, "tagging": tagging}
 
 
+@router.get("/tags/vocabulary", dependencies=[READ])
+def tag_vocabulary() -> dict[str, Any]:
+    """The tag list as data, for an app that shows or checks tags (FansCut reads this
+    instead of keeping a copy): the bundled content tags, the cut tags (`fc:`), the
+    measured signals, and `mine`, the custom tags in the same shape."""
+    data = vocab.load()
+    return {"schema": data.get("schema"), "kind": data.get("kind"), "version": data["version"],
+            "families": data["families"], "tags": data["tags"], "cut_tags": data["cut_tags"],
+            "signals": data.get("signals", []), "mine": vocab.custom_tags()}
+
+
 # -- custom tags ("My tags") -----------------------------------------------------------
 def _custom_view(t: dict[str, Any], counts: dict[str, int] | None = None, labels: set[str] | None = None,
                  off: set[str] | None = None) -> dict[str, Any]:
