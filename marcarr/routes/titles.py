@@ -142,6 +142,25 @@ def title_graph(tid: str, request: Request) -> dict[str, Any]:
     return {"title": tid, "video": vid, "total_scenes": len(scenes), **graphmod.build(scenes, cast, through)}
 
 
+@router.post("/titles/{tid}/cast", dependencies=[REVIEW])
+def add_cast(tid: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B008
+    """Add a person to a title by hand, for a home video or anyone the catalogue
+    misses. `name` is who they are on screen; `actor` (optional) who plays them.
+    Upload their photo with PUT /people/{id}/photo so faces can be matched."""
+    c = core()
+    p = c.store.add_cast_member(tid, str(body.get("name") or ""), str(body.get("actor") or ""))
+    c.pipeline.forget_refs()
+    return views().person_view(p)
+
+
+@router.delete("/titles/{tid}/cast/{pid}", status_code=204, dependencies=[REVIEW])
+def remove_cast(tid: str, pid: str) -> Response:
+    c = core()
+    c.store.remove_cast_member(tid, pid)
+    c.pipeline.forget_refs()
+    return Response(status_code=204)
+
+
 @router.get("/titles/{tid}/poster")
 def poster(tid: str, width: int = 300) -> Response:
     c = core()

@@ -171,7 +171,8 @@ class Views:
         if not cast and t and t.get("parent_id"):
             cast = self.store.cast(t["parent_id"])
         return [{"id": c["person"], "actor": c["actor"], "character": c["character"],
-                 "photo": self.photo_url(c["person"]) if c.get("photo") else None}
+                 "photo": self.photo_url(c["person"]) if c.get("photo") else None,
+                 "manual": bool(c.get("manual"))}
                 for c in cast]
 
     def photo_url(self, pid: str) -> str:

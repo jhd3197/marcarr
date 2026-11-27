@@ -117,6 +117,24 @@ POST /api/v1/videos/{id}/presence
 stays the list of those seen. A person keeps or drops it with
 `POST /presence/{id}/keep|drop`.
 
+## 8. People of a home video
+
+A wedding or a birthday has no Plex or TMDB cast, so nobody can be named until
+someone says who is in it. Add each person to the title and upload a photo of
+their face; the faces step then finds them like any actor.
+
+```
+POST   /api/v1/titles/{id}/cast          {"name": "Maria"}   -> {"id": "maria", ...}
+PUT    /api/v1/people/maria/photo        the image file as the body (JPEG, PNG, WebP)
+POST   /api/v1/videos/{id}/run           {"steps": ["cast", "faces"]}
+DELETE /api/v1/titles/{id}/cast/maria    out of this title only
+```
+
+All three need the `review` scope. A name that already exists is the same
+person, so one "Maria" covers every video she is in. This works on films too,
+for someone the catalogue misses: a cast refresh keeps the people added by
+hand, and an uploaded photo wins over the catalogue's.
+
 ## Moving each app, step by step
 
 **FansCut** (`fanscut/scenes/`): set `marcarr.url` + key. Then
