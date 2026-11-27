@@ -266,10 +266,12 @@ class Pipeline:
             if total:
                 progress(min(pos / total, 1.0), f"{int(pos // 60)} min read")
 
+        an = self.core.cfg.analysis
         try:
+            shots = detect_shots(v["path"], cancel=ctx.cancel, progress=seen, threshold=idx.CUT_THRESHOLD,
+                                 workers=an.shot_pieces, hwaccel=an.hwaccel or None)
+        except TypeError:  # Prompture before pieces, hardware decoding and the scaled timeout
             shots = detect_shots(v["path"], cancel=ctx.cancel, progress=seen, threshold=idx.CUT_THRESHOLD)
-        except TypeError:
-            shots = detect_shots(v["path"], cancel=ctx.cancel, threshold=idx.CUT_THRESHOLD)
         ctx.check()
         pairs = merge_flashes([(s.start, s.end) for s in shots])
         self.store.save_result(vid, "shots", {

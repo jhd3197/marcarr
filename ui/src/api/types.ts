@@ -405,7 +405,7 @@ export interface Settings {
   tags: { families_off: string[]; search_closely: string[] };
   faces: { enabled: boolean; models: { name: string; present: boolean; size: number | null }[] };
   general: { theme: 'dark' | 'light' | 'system'; language: 'en' | 'es'; clock: '24h' | '12h' };
-  analysis: { steps: Record<Step, boolean>; at_once: 1 | 2 | 4; window_start: string; window_end: string; on_new: boolean; transcribe: boolean };
+  analysis: { steps: Record<Step, boolean>; at_once: 1 | 2 | 4; window_start: string; window_end: string; on_new: boolean; transcribe: boolean; shot_pieces: 1 | 2 | 4 | 8; hwaccel: string };
   server: { require_key: boolean; data_dir: string };
 }
 

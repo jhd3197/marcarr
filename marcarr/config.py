@@ -129,6 +129,10 @@ class AnalysisCfg(BaseModel):
     on_new: bool = True  # analyse what Plex adds
     transcribe: bool = False  # no text subtitles: transcribe the audio (slow)
     language: str = "en"  # subtitle language to prefer
+    # Finding camera cuts reads every frame. Pieces of a video read side by side help
+    # when one decoder can't use every core (AV1 through libaom).
+    shot_pieces: Literal[1, 2, 4, 8] = 4
+    hwaccel: str = ""  # an ffmpeg -hwaccel method ("auto", "cuda"...); "" decodes on the CPU
 
     @field_validator("steps")
     @classmethod

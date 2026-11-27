@@ -412,6 +412,15 @@ export default function Settings() {
                   <option value={1}>1</option><option value={2}>2</option><option value={4}>4</option>
                 </select>
               </Row>
+              <Row label="Finding cuts" htmlFor="s-pieces">
+                <select id="s-pieces" className="sel" value={draft.analysis.shot_pieces} onChange={(e) => set('analysis', { shot_pieces: Number(e.target.value) as 1 | 2 | 4 | 8 })}>
+                  {[1, 2, 4, 8].map((n) => <option key={n} value={n}>{n === 1 ? 'One piece at a time' : `${n} pieces at once`}</option>)}
+                </select>
+                <select className="sel" aria-label="Decode on" value={draft.analysis.hwaccel || ''} onChange={(e) => set('analysis', { hwaccel: e.target.value })}>
+                  <option value="">Decode on the CPU</option><option value="auto">Decode on the graphics card</option>
+                </select>
+                <span>Reads every frame once. More pieces use more cores; the graphics card helps when it is not busy.</span>
+              </Row>
               <Row label="When">
                 <Seg label="When to analyse" value={atNight ? 'night' : 'always'} options={[['always', 'Always'], ['night', 'Only at night']]}
                   onChange={(v) => set('analysis', v === 'night' ? { window_start: saved.analysis.window_start || '01:00', window_end: saved.analysis.window_end || '07:00' } : { window_start: '', window_end: '' })} />
