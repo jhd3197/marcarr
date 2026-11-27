@@ -10,12 +10,13 @@ Settings > Connected apps > Add an app. Pick its scopes:
 
 | App | Scopes |
 |---|---|
-| FansCut | read, propose, run |
+| FansCut | read, propose, review, run |
 | Doblarr | read, propose, run |
 | MCP clients | read, propose |
 
 Send it as `X-Api-Key: mk_...`. A key never reaches Settings, and a tag an app
-adds is always a proposal: a person keeps or drops it.
+adds is always a proposal: a person keeps or drops it. FansCut has `review`
+because a person keeps and drops tags on its own pages too.
 
 ## 2. Find the video for a file
 
@@ -75,6 +76,14 @@ second of the video that shows it, so a reviewer can jump straight there.
 
 The source is the key's app name (`doblarr`). Kept and dropped tags fire
 `tag.kept` / `tag.dropped`.
+
+**The tag list** is Marcarr's: `GET /tags/vocabulary` gives it as data (content
+tags with their families and cues, cut tags, signals, and `mine`, the custom
+tags). An app reads it instead of keeping a copy.
+
+**An app's own tags** carry its prefix and are stored like any tag: FansCut's
+cut tags are `fc:filler`, `fc:recap` and so on. Send them with `"snap": false`
+to keep the exact times; content tags snap to camera cuts by default.
 
 ## 6. Versions and cuts
 
@@ -142,8 +151,9 @@ hand, and an uploaded photo wins over the catalogue's.
 1. `index.build` -> `GET /videos/{id}/analysis` (shots, lines, scenes).
 2. `signals.py` -> `/signals`.
 3. The tagger and the scene editor -> `/videos/{id}/tags`, `/tags/{id}/keep|drop`,
-   `PATCH /videos/{id}/scenes/{n}` for edges. FansCut's own tags (`fc:`) stay in
-   FansCut.
+   `PATCH /videos/{id}/scenes/{n}` for edges. FansCut's cut tags (`fc:`) go the
+   same way, and its tag list is `GET /tags/vocabulary`. Cut tags made before
+   that are copied over once with FansCut's `POST /api/scenes/tags/move`.
 4. X-Ray -> `/at/{seconds}` and `/faces` (Marcarr's face tracks replace
    `faces.py`).
 

@@ -32,10 +32,18 @@ def tag_family(tag: str) -> str | None:
 
 
 def tag_id(name_or_id: str) -> str:
-    """ "Christmas" or "christmas" -> "christmas" (names from the tag list map to ids)."""
+    """ "Christmas" or "christmas" -> "christmas" (names from the tag list map to ids).
+    An app's own tag keeps its prefix: "fc:Filler" -> "fc:filler"."""
     from .store import slug
 
-    return vocab.find(name_or_id) or slug(str(name_or_id or "").strip())
+    raw = str(name_or_id or "").strip()
+    found = vocab.find(raw)
+    if found:
+        return found
+    if raw.lower().startswith(vocab.SMART):
+        rest = slug(raw[len(vocab.SMART):])
+        return vocab.SMART + rest if rest else ""
+    return slug(raw)
 
 
 def source_kind(source: str) -> str:

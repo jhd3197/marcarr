@@ -407,6 +407,17 @@ export const ENDPOINTS: Endpoint[] = [
   },
   {
     "group": "Tags",
+    "method": "GET",
+    "path": "/tags/vocabulary",
+    "title": "The tag list as data, for an app to show or check tags",
+    "scope": "read",
+    "params": [],
+    "example": "/tags/vocabulary",
+    "body": null,
+    "response": "{\n  \"version\": 2,\n  \"families\": [\n    \"occasion\",\n    \"weather\"\n  ],\n  \"tags\": [\n    {\n      \"id\": \"christmas\",\n      \"name\": \"Christmas\",\n      \"family\": \"occasion\",\n      \"hint\": \"Christmas decorations, trees, presents\",\n      \"cues\": {\n        \"see\": [\n          \"Christmas tree\"\n        ],\n        \"hear\": [\n          \"Merry Christmas\"\n        ]\n      }\n    }\n  ],\n  \"cut_tags\": [\n    {\n      \"id\": \"fc:filler\",\n      \"name\": \"Filler\",\n      \"detect\": \"person\"\n    }\n  ],\n  \"signals\": [\n    {\n      \"id\": \"dark\",\n      \"name\": \"Dark\"\n    }\n  ],\n  \"mine\": []\n}"
+  },
+  {
+    "group": "Tags",
     "method": "POST",
     "path": "/tags/{tag}/keep",
     "title": "Keep a tag",
