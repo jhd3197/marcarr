@@ -296,12 +296,65 @@ class Store:
                                  c.get("photo") or "", stamp))
             elif not row["photo"] and c.get("photo"):
                 self.db.execute("UPDATE people SET photo = ? WHERE id = ?", (c["photo"], pid))
+            photo = c.get("photo") or ""
+            if row is not None and row["photo"].startswith("local:"):
+                photo = row["photo"]  # a photo someone uploaded wins over the catalogue's
             out.append({"person": pid, "actor": c.get("name") or "",
-                        "character": c.get("character") or "", "photo": c.get("photo") or "",
+                        "character": c.get("character") or "", "photo": photo,
                         "order": c.get("order", len(out))})
+        # People someone added by hand stay when Plex or TMDB send their list again.
+        have = {c["person"] for c in out}
+        for c in self.cast(title_id):
+            if c.get("manual") and c["person"] not in have:
+                out.append({**c, "order": len(out)})
         self.db.execute("INSERT OR REPLACE INTO casts (title_id, source, doc, updated_at)"
                         " VALUES (?,?,?,?)", (title_id, source, dumps(out), stamp))
         return out
+
+    def _write_cast(self, title_id: str, cast: list[dict[str, Any]]) -> None:
+        row = self.db.one("SELECT source FROM casts WHERE title_id = ?", (title_id,))
+        self.db.execute("INSERT OR REPLACE INTO casts (title_id, source, doc, updated_at)"
+                        " VALUES (?,?,?,?)",
+                        (title_id, row["source"] if row else "manual", dumps(cast), now()))
+
+    def add_cast_member(self, title_id: str, name: str, actor: str = "") -> dict[str, Any]:
+        """Add a person to a title by hand (a home video has no Plex or TMDB cast).
+        *name* is who they are on screen; a person of that name is reused."""
+        self.title(title_id)
+        name, actor = " ".join(name.split()), " ".join(actor.split())
+        pid = slug(name)
+        if not pid:
+            raise MarcarrError("a person needs a name")
+        row = self.db.one("SELECT * FROM people WHERE id = ?", (pid,))
+        if row is None:
+            self.db.execute("INSERT INTO people (id, actor, character, photo, updated_at)"
+                            " VALUES (?,?,?,?,?)", (pid, actor, name, "", now()))
+            row = self.db.one("SELECT * FROM people WHERE id = ?", (pid,))
+        cast = self.cast(title_id)
+        if not any(c["person"] == pid for c in cast):
+            cast.append({"person": pid, "actor": row["actor"], "character": row["character"],
+                         "photo": row["photo"], "order": len(cast), "manual": True})
+            self._write_cast(title_id, cast)
+        return dict(row)
+
+    def remove_cast_member(self, title_id: str, pid: str) -> None:
+        cast = self.cast(title_id)
+        left = [c for c in cast if c["person"] != pid]
+        if len(left) == len(cast):
+            raise NotFoundError(f"{pid} is not in the cast of {title_id}")
+        self._write_cast(title_id, left)
+
+    def set_person_photo(self, pid: str, photo: str) -> dict[str, Any]:
+        """A person's photo, here and in every cast that lists them."""
+        self.person(pid)
+        self.db.execute("UPDATE people SET photo = ?, updated_at = ? WHERE id = ?",
+                        (photo, now(), pid))
+        for r in self.db.query("SELECT title_id, doc FROM casts"):
+            cast = json.loads(r["doc"])
+            if any(c.get("person") == pid for c in cast):
+                self._write_cast(r["title_id"], [{**c, "photo": photo} if c.get("person") == pid
+                                                 else c for c in cast])
+        return self.person(pid)
 
     def person(self, pid: str) -> dict[str, Any]:
         row = self.db.one("SELECT * FROM people WHERE id = ?", (pid,))

@@ -10,12 +10,13 @@ Settings > Connected apps > Add an app. Pick its scopes:
 
 | App | Scopes |
 |---|---|
-| FansCut | read, propose, run |
+| FansCut | read, propose, review, run |
 | Doblarr | read, propose, run |
 | MCP clients | read, propose |
 
 Send it as `X-Api-Key: mk_...`. A key never reaches Settings, and a tag an app
-adds is always a proposal: a person keeps or drops it.
+adds is always a proposal: a person keeps or drops it. FansCut has `review`
+because a person keeps and drops tags on its own pages too.
 
 ## 2. Find the video for a file
 
@@ -76,6 +77,14 @@ second of the video that shows it, so a reviewer can jump straight there.
 The source is the key's app name (`doblarr`). Kept and dropped tags fire
 `tag.kept` / `tag.dropped`.
 
+**The tag list** is Marcarr's: `GET /tags/vocabulary` gives it as data (content
+tags with their families and cues, cut tags, signals, and `mine`, the custom
+tags). An app reads it instead of keeping a copy.
+
+**An app's own tags** carry its prefix and are stored like any tag: FansCut's
+cut tags are `fc:filler`, `fc:recap` and so on. Send them with `"snap": false`
+to keep the exact times; content tags snap to camera cuts by default.
+
 ## 6. Versions and cuts
 
 A Plex item can hold several files: an Extended and a Theatrical, or two
@@ -117,6 +126,24 @@ POST /api/v1/videos/{id}/presence
 stays the list of those seen. A person keeps or drops it with
 `POST /presence/{id}/keep|drop`.
 
+## 8. People of a home video
+
+A wedding or a birthday has no Plex or TMDB cast, so nobody can be named until
+someone says who is in it. Add each person to the title and upload a photo of
+their face; the faces step then finds them like any actor.
+
+```
+POST   /api/v1/titles/{id}/cast          {"name": "Maria"}   -> {"id": "maria", ...}
+PUT    /api/v1/people/maria/photo        the image file as the body (JPEG, PNG, WebP)
+POST   /api/v1/videos/{id}/run           {"steps": ["cast", "faces"]}
+DELETE /api/v1/titles/{id}/cast/maria    out of this title only
+```
+
+All three need the `review` scope. A name that already exists is the same
+person, so one "Maria" covers every video she is in. This works on films too,
+for someone the catalogue misses: a cast refresh keeps the people added by
+hand, and an uploaded photo wins over the catalogue's.
+
 ## Moving each app, step by step
 
 **FansCut** (`fanscut/scenes/`): set `marcarr.url` + key. Then
@@ -124,8 +151,9 @@ stays the list of those seen. A person keeps or drops it with
 1. `index.build` -> `GET /videos/{id}/analysis` (shots, lines, scenes).
 2. `signals.py` -> `/signals`.
 3. The tagger and the scene editor -> `/videos/{id}/tags`, `/tags/{id}/keep|drop`,
-   `PATCH /videos/{id}/scenes/{n}` for edges. FansCut's own tags (`fc:`) stay in
-   FansCut.
+   `PATCH /videos/{id}/scenes/{n}` for edges. FansCut's cut tags (`fc:`) go the
+   same way, and its tag list is `GET /tags/vocabulary`. Cut tags made before
+   that are copied over once with FansCut's `POST /api/scenes/tags/move`.
 4. X-Ray -> `/at/{seconds}` and `/faces` (Marcarr's face tracks replace
    `faces.py`).
 

@@ -266,10 +266,12 @@ class Pipeline:
             if total:
                 progress(min(pos / total, 1.0), f"{int(pos // 60)} min read")
 
+        an = self.core.cfg.analysis
         try:
+            shots = detect_shots(v["path"], cancel=ctx.cancel, progress=seen, threshold=idx.CUT_THRESHOLD,
+                                 workers=an.shot_pieces, hwaccel=an.hwaccel or None)
+        except TypeError:  # Prompture before pieces, hardware decoding and the scaled timeout
             shots = detect_shots(v["path"], cancel=ctx.cancel, progress=seen, threshold=idx.CUT_THRESHOLD)
-        except TypeError:
-            shots = detect_shots(v["path"], cancel=ctx.cancel, threshold=idx.CUT_THRESHOLD)
         ctx.check()
         pairs = merge_flashes([(s.start, s.end) for s in shots])
         self.store.save_result(vid, "shots", {
@@ -382,13 +384,17 @@ class Pipeline:
     def step_cast(self, vid: str, progress: Any, ctx: JobContext) -> str:
         v = self.store.video(vid)
         source, people = self.fetch_cast(v["title_id"])
+        self.forget_refs()
         if not people:
-            raise StepSkip("none", "No cast: Plex lists nobody and no TMDB key is set")
+            added = [c for c in self.store.cast(v["title_id"]) if c.get("manual")]
+            if added:
+                return f"{len(added)} {'person' if len(added) == 1 else 'people'} you added"
+            raise StepSkip("none", "No cast: Plex lists nobody and no TMDB key is set. "
+                                   "Add the people yourself on the title's page")
         saved = self.store.save_cast(v["title_id"], source, people)
         t = self.store.title(v["title_id"])
         if t["parent_id"]:
             self.store.save_cast(t["parent_id"], source, people)
-        self._refs_cache.pop(v["title_id"], None) if hasattr(self, "_refs_cache") else None
         return f"{len(saved)} people from {source.upper() if source == 'tmdb' else source.title()}"
 
     # -- faces -------------------------------------------------------------------------
@@ -408,12 +414,16 @@ class Pipeline:
         self.core.forget_caps()
         return {"message": "Face models downloaded"}
 
+    def forget_refs(self) -> None:
+        """Drop the reference faces kept in memory (a cast or a photo changed)."""
+        self._refs_cache: dict[str, dict[str, dict[str, Any]]] = {}
+
     def face_refs(self, title_id: str) -> dict[str, dict[str, Any]]:
         """Reference faces of a title's cast, from their photos, keyed by person id."""
         from .stages import faces as faces_mod
 
         if not hasattr(self, "_refs_cache"):
-            self._refs_cache: dict[str, dict[str, dict[str, Any]]] = {}
+            self.forget_refs()
         if title_id in self._refs_cache:
             return self._refs_cache[title_id]
         engine = self.face_engine()
@@ -423,16 +433,29 @@ class Pipeline:
         t = self.store.title_or_none(title_id)
         if not cast and t and t.get("parent_id"):
             cast = self.store.cast(t["parent_id"])
-        for c in cast[:40]:
-            pid, url = c["person"], self.photo_source(c.get("photo") or "")
-            if pid in refs or not url:
+        # People added by hand first: they are never cut off by a long Plex cast.
+        for c in sorted(cast, key=lambda c: not c.get("manual"))[:40]:
+            pid, raw = c["person"], c.get("photo") or ""
+            if pid in refs or not raw:
                 continue
-            photo = faces_mod.photo_cache(cache, url, self.core.session)
+            local = self.local_photo(raw)
+            url = raw if local else self.photo_source(raw)
+            if not url:
+                continue
+            photo = (local.read_bytes() if local
+                     else faces_mod.photo_cache(cache, url, self.core.session))
             feat = engine.reference(photo) if photo else None
             if feat is not None:
                 refs[pid] = {"character": c.get("character") or "", "photo": url, "feature": feat}
         self._refs_cache[title_id] = refs
         return refs
+
+    def local_photo(self, photo: str) -> Path | None:
+        """The file of a photo someone uploaded ("local:<name>"), if it is on disk."""
+        if not photo.startswith("local:"):
+            return None
+        path = self.core.data_dir / "people" / Path(photo[6:]).name
+        return path if path.is_file() else None
 
     def photo_source(self, photo: str) -> str:
         """A cast photo URL Marcarr can download (Plex paths go through the server)."""

@@ -5,13 +5,14 @@ export type Scope = 'read' | 'propose' | 'review' | 'run';
 
 export interface Endpoint {
   group: string;
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   path: string; // under /api/v1
   title: string;
   scope: Scope;
   params: { name: string; type: string; what: string }[];
   example: string; // path with sample values
   body: string | null; // JSON body for POST examples
+  upload?: string; // the request body is this file (an image), not JSON
   response: string;
 }
 
@@ -406,6 +407,17 @@ export const ENDPOINTS: Endpoint[] = [
   },
   {
     "group": "Tags",
+    "method": "GET",
+    "path": "/tags/vocabulary",
+    "title": "The tag list as data, for an app to show or check tags",
+    "scope": "read",
+    "params": [],
+    "example": "/tags/vocabulary",
+    "body": null,
+    "response": "{\n  \"version\": 2,\n  \"families\": [\n    \"occasion\",\n    \"weather\"\n  ],\n  \"tags\": [\n    {\n      \"id\": \"christmas\",\n      \"name\": \"Christmas\",\n      \"family\": \"occasion\",\n      \"hint\": \"Christmas decorations, trees, presents\",\n      \"cues\": {\n        \"see\": [\n          \"Christmas tree\"\n        ],\n        \"hear\": [\n          \"Merry Christmas\"\n        ]\n      }\n    }\n  ],\n  \"cut_tags\": [\n    {\n      \"id\": \"fc:filler\",\n      \"name\": \"Filler\",\n      \"detect\": \"person\"\n    }\n  ],\n  \"signals\": [\n    {\n      \"id\": \"dark\",\n      \"name\": \"Dark\"\n    }\n  ],\n  \"mine\": []\n}"
+  },
+  {
+    "group": "Tags",
     "method": "POST",
     "path": "/tags/{tag}/keep",
     "title": "Keep a tag",
@@ -459,6 +471,73 @@ export const ENDPOINTS: Endpoint[] = [
     "example": "/people/ron-weasley/scenes",
     "body": null,
     "response": "{\n  \"person\": {\n    \"id\": \"ron-weasley\",\n    \"actor\": \"Rupert Grint\",\n    \"character\": \"Ron Weasley\"\n  },\n  \"total\": 31,\n  \"items\": [\n    {\n      \"title\": \"movie:tmdb:671\",\n      \"video\": \"7c9e21ab\",\n      \"scene\": 34,\n      \"start\": 2178.0,\n      \"end\": 2388.0\n    }\n  ]\n}"
+  },
+  {
+    "group": "People and places",
+    "method": "POST",
+    "path": "/titles/{title}/cast",
+    "title": "Add a person to a title by hand",
+    "scope": "review",
+    "params": [
+      {
+        "name": "name",
+        "type": "text",
+        "what": "Who they are on screen. A person of that name is reused"
+      },
+      {
+        "name": "actor",
+        "type": "text",
+        "what": "Optional: who plays them"
+      }
+    ],
+    "example": "/titles/plex:48211/cast",
+    "body": "{\n  \"name\": \"Maria\"\n}",
+    "response": "{\n  \"id\": \"maria\",\n  \"actor\": \"\",\n  \"character\": \"Maria\",\n  \"photo\": null\n}"
+  },
+  {
+    "group": "People and places",
+    "method": "PUT",
+    "path": "/people/{person}/photo",
+    "title": "Upload a person's photo",
+    "scope": "review",
+    "params": [
+      {
+        "name": "person",
+        "type": "person id",
+        "what": "Who the photo shows"
+      },
+      {
+        "name": "(body)",
+        "type": "image",
+        "what": "The JPEG, PNG or WebP file itself, up to 10 MB. Faces are matched against it"
+      }
+    ],
+    "example": "/people/maria/photo",
+    "body": null,
+    "upload": "maria.jpg",
+    "response": "{\n  \"id\": \"maria\",\n  \"actor\": \"\",\n  \"character\": \"Maria\",\n  \"photo\": \"/api/v1/people/maria/photo\"\n}"
+  },
+  {
+    "group": "People and places",
+    "method": "DELETE",
+    "path": "/titles/{title}/cast/{person}",
+    "title": "Take a person out of a title's cast",
+    "scope": "review",
+    "params": [
+      {
+        "name": "title",
+        "type": "id",
+        "what": "The title"
+      },
+      {
+        "name": "person",
+        "type": "person id",
+        "what": "Who to take out. The person and their scenes elsewhere stay"
+      }
+    ],
+    "example": "/titles/plex:48211/cast/maria",
+    "body": null,
+    "response": "(204, no content)"
   },
   {
     "group": "People and places",

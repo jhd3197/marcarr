@@ -146,6 +146,15 @@ export const api = {
   // -- people, faces, places ---------------------------------------------------------
   people: (q: { title?: string; q?: string } = {}) => get<Paged<Person>>('/people', q),
   person: (id: string) => get<Person & { titles_in: { id: string; name: string; year: number | null; scenes: number }[]; faces_to_confirm: number; scene_count: number }>(`/people/${enc(id)}`),
+  // A person added by hand (a home video has no Plex or TMDB cast). The photo is what faces are matched against.
+  addCast: (title: string, body: { name: string; actor?: string }) => post<Person>(`/titles/${enc(title)}/cast`, body),
+  removeCast: (title: string, person: string) => del<void>(`/titles/${enc(title)}/cast/${enc(person)}`),
+  setPersonPhoto: async (person: string, photo: Blob): Promise<Person> => {
+    const res = await fetch(`${BASE}/people/${enc(person)}/photo`, { method: 'PUT', headers: { 'Content-Type': photo.type || 'application/octet-stream' }, body: photo });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(res.status, j.detail || j.error || res.statusText);
+    return j as Person;
+  },
   personScenes: (id: string, title?: string) => get<Paged<SceneHit>>(`/people/${enc(id)}/scenes`, { title }),
   personFaces: (id: string, confirmed?: boolean) => get<Paged<Face>>(`/people/${enc(id)}/faces`, { confirmed }),
   confirmFace: (id: string) => post<Face>(`/faces/${id}/confirm`),
