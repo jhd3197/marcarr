@@ -1,10 +1,21 @@
+# Marcarr next to Plex.
+#
+#   1. mkdir -p config && chown -R 1000:1000 config     # the container runs as uid 1000
+#   2. set MARCARR_PLEX_URL below (and MARCARR_PLEX_TOKEN), or fill them in at Settings
+#   3. docker compose up -d
+#   4. open http://localhost:7470
+#
+# To build the image from this checkout instead of pulling it:
+#   docker compose up -d --build
 services:
   marcarr:
+    image: ghcr.io/jhd3197/marcarr:latest
     build: .
     container_name: marcarr
     ports:
       - "7470:7470"
     volumes:
+      # config.yaml, the database, caches and face models; created on first start.
       - ./config:/config
       # Mount your media where Plex sees it, or map paths in Settings > Plex.
       - /path/to/media:/data:ro
@@ -12,4 +23,5 @@ services:
       - MARCARR_PLEX_URL=http://plex:32400
       # - MARCARR_PLEX_TOKEN=...
       # - MARCARR_AI_API_KEY=...
+      # - MARCARR_TMDB_API_KEY=...
     restart: unless-stopped
