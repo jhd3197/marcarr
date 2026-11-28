@@ -1,0 +1,83 @@
+name: Package Windows
+
+# Builds the portable Windows bundle (embedded Python + Marcarr + ffmpeg + launcher) and
+# smoke-tests it on a Windows runner. Called by CI (to prove it builds on every change) and by
+# the release workflow (which also attaches the zip to the GitHub release). Permissions come
+# from the caller.
+on:
+  workflow_call:
+    inputs:
+      build-ui:
+        description: "Build the web UI here. When false, the caller's run must have uploaded a ui-dist artifact."
+        type: boolean
+        default: true
+      release-tag:
+        description: "Attach the zip to this GitHub release (needs contents: write on the caller)."
+        type: string
+        default: ""
+
+jobs:
+  windows:
+    name: build and smoke-test the bundle
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the web UI
+        if: inputs.build-ui
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - if: inputs.build-ui
+        shell: bash
+        run: |
+          cd ui
+          npm ci --no-audit --no-fund
+          npm run build
+          mkdir -p ../marcarr/ui && cp -r dist/. ../marcarr/ui/
+      - name: Use the UI build from CI
+        if: ${{ !inputs.build-ui }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-dist
+          path: marcarr/ui
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the wheel
+        shell: bash
+        run: |
+          test -f marcarr/ui/index.html
+          python -m pip install --upgrade build
+          python -m build --wheel
+          echo "VERSION=$(python -c "import marcarr; print(marcarr.__version__)")" >> "$GITHUB_ENV"
+          echo "WHEEL=$(ls dist/*.whl)" >> "$GITHUB_ENV"
+
+      - name: Build the portable bundle
+        shell: pwsh
+        run: ./scripts/windows/build-portable.ps1 -Wheel $env:WHEEL -Version $env:VERSION
+
+      - name: Smoke-test the bundle
+        shell: pwsh
+        run: ./scripts/windows/smoke.ps1 -Root "dist-win/Marcarr-$env:VERSION-windows-x64"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marcarr-windows-x64
+          path: |
+            dist-win/*.zip
+            dist-win/*.zip.sha256
+          retention-days: 7
+
+      - name: Attach the zip to the release
+        if: inputs.release-tag != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release-tag }}
+        run: gh release upload "$TAG" dist-win/*.zip dist-win/*.zip.sha256 --clobber --repo "$GITHUB_REPOSITORY"
